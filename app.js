@@ -687,6 +687,7 @@
   var recSelectedMonth = "";
   var recSelectedWeek = "";
   var recSelectedYear = "";
+  var editingRecordId = null;
 
   function recApi(path, options) {
     var cfg = window.DIESEL_CONFIG;
@@ -726,6 +727,26 @@
     var meta = authSession.user.user_metadata || {};
     return !!(meta.full_name && String(meta.full_name).trim());
   }
+  function isOwnRecord(r) {
+    return !!(authSession && authSession.user && r.owner_id &&
+      String(r.owner_id) === String(authSession.user.id));
+  }
+  function displaySavedBy(r) {
+    // Old records saved before the real name was set carry the email
+    // as saved_by_name. Once the owner sets his real name, show that
+    // name instead of the stored email — mail kabhi display nahi hogi.
+    var stored = r.saved_by_name || "";
+    if (stored.indexOf("@") !== -1 && authHasRealName() &&
+        (isOwnRecord(r) || stored === (authSession.user.email || ""))) {
+      return authName();
+    }
+    return stored;
+  }
+  function cancelEdit() {
+    editingRecordId = null;
+    $("recSaveBtn").textContent = "Record Save Karein";
+    $("recCancelEditBtn").hidden = true;
+  }
   function authCall(path, body, token) {
     var cfg = window.DIESEL_CONFIG;
     return fetch(cfg.SUPABASE_URL + "/auth/v1" + path, {
@@ -751,6 +772,8 @@
       $("authUserName").textContent = authName();
       $("authUserEmail").textContent = authSession.user.email || "";
       $("authNameSetup").hidden = authHasRealName();
+    } else {
+      cancelEdit();
     }
     $("recBy").value = loggedIn ? authName() : "";
     $("recSaveBtn").disabled = !recConfigured || !loggedIn;
@@ -893,17 +916,82 @@
       top.appendChild(q);
       var meta = document.createElement("div");
       meta.className = "rec-meta";
+      var byName = displaySavedBy(r);
       meta.textContent = (r.record_date || "") +
         (r.record_time ? " " + String(r.record_time).slice(0, 5) : "") +
         " • Driver: " + (r.driver_name || "") +
         (r.company_name ? " • Company: " + r.company_name : "") +
         (r.receiver_name ? " • Receiver: " + r.receiver_name : "") +
-        (r.saved_by_name ? " • By: " + r.saved_by_name : "");
+        (byName ? " • By: " + byName : "");
       item.appendChild(top);
       item.appendChild(meta);
+      // Edit/Delete sirf apne record par — doosre user ka record par
+      // ye buttons kabhi render hi nahi honge. Asli rok database ki
+      // RLS policy hai (owner_id = auth.uid()), ye sirf UI hai.
+      if (isOwnRecord(r)) {
+        var actions = document.createElement("div");
+        actions.className = "rec-actions";
+        var editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", function () { startEdit(r); });
+        var delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "rec-del";
+        delBtn.textContent = "Delete";
+        delBtn.addEventListener("click", function () { deleteRecord(r); });
+        actions.appendChild(editBtn);
+        actions.appendChild(delBtn);
+        item.appendChild(actions);
+      }
       list.appendChild(item);
     });
   }
+  function startEdit(r) {
+    if (!isOwnRecord(r)) {
+      recMsg("Sirf apna record edit ho sakta hai.", false);
+      return;
+    }
+    editingRecordId = r.id;
+    $("recVehicle").value = r.vehicle_number || "";
+    $("recDriver").value = r.driver_name || "";
+    $("recCompany").value = r.company_name || "";
+    $("recDate").value = r.record_date || "";
+    $("recTime").value = r.record_time ? String(r.record_time).slice(0, 5) : "";
+    $("recLitres").value = r.diesel_litres != null ? r.diesel_litres : "";
+    $("recKg").value = r.diesel_kg != null ? r.diesel_kg : "";
+    $("recSaveBtn").textContent = "Record Update Karein";
+    $("recCancelEditBtn").hidden = false;
+    recMsg("Edit mode: apna record update karein, phir Record Update Karein dabayein.", true);
+    $("recVehicle").focus();
+  }
+  function deleteRecord(r) {
+    if (!isOwnRecord(r)) {
+      recMsg("Sirf apna record delete ho sakta hai.", false);
+      return;
+    }
+    if (!window.confirm("Ye record pakka delete karna hai?")) return;
+    recApi("/diesel_records?id=eq." + encodeURIComponent(r.id), {
+      method: "DELETE",
+      authToken: authSession.access_token
+    }).then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      recMsg("Record delete ho gaya.", true);
+      if (editingRecordId === r.id) cancelEdit();
+      loadRecords();
+    }).catch(function () {
+      recMsg("Record delete nahi hua — sirf apna record delete ho sakta hai. Agar ye aapka record hai to admin se SQL v4 (edit/delete permission) run karwayein.", false);
+    });
+  }
+  $("recCancelEditBtn").addEventListener("click", function () {
+    cancelEdit();
+    $("recVehicle").value = "";
+    $("recDriver").value = "";
+    $("recCompany").value = "";
+    $("recLitres").value = "";
+    $("recKg").value = "";
+    recMsg("", true);
+  });
   function loadRecords() {
     if (!recConfigured) { renderRecList(); return; }
     recApi("/diesel_records?select=*&order=record_date.desc,created_at.desc&limit=1000")
@@ -944,18 +1032,8 @@
     if (ev.target === recOverlay) closeRecords();
   });
 
-  $("recLitres").addEventListener("input", function () {
-    var l = toNum($("recLitres").value);
-    if (isNum(l) && l > 0 && density > 0) {
-      $("recKg").value = fmt2(litresToKg(l, density));
-    }
-  });
-  $("recKg").addEventListener("input", function () {
-    var k = toNum($("recKg").value);
-    if (isNum(k) && k > 0 && density > 0) {
-      $("recLitres").value = fmt2(kgToLitres(k, density));
-    }
-  });
+  // Record form me koi auto calculation nahi: user Litres aur KG
+  // dono khud likhega. (Upar wala converter apni jagah auto hi rahega.)
   $("authLoginBtn").addEventListener("click", function () {
     if (!recConfigured) { authMsg("Database setup pending — pehle Supabase set karein.", false); return; }
     var email = $("authEmail").value.trim();
@@ -1008,6 +1086,7 @@
       nameEl.textContent = "Naam save ho gaya — ab har record me yehi naam aayega.";
       nameEl.className = "form-msg ok";
       renderAuth();
+      renderRecList();
     }).catch(function () {
       nameEl.textContent = "Naam save nahi hua — dobara try karein.";
       nameEl.className = "form-msg err";
@@ -1024,6 +1103,13 @@
       recMsg("Record save karne ke liye pehle login karein — visitor sirf dekh sakte hain.", false);
       return;
     }
+    // Real name ke baghair save bilkul nahi: warna trigger ka email
+    // fallback phir By me mail le aayega. Naam set karein, phir save.
+    if (!authHasRealName()) {
+      recMsg("Pehle apna real naam set karein — upar naam wale box me naam likhein, phir record save karein. Email se record save nahi hoga.", false);
+      if (!$("authNameSetup").hidden) $("authRealName").focus();
+      return;
+    }
     var vehicle = $("recVehicle").value.trim();
     var driver = $("recDriver").value.trim();
     var date = $("recDate").value;
@@ -1031,40 +1117,56 @@
     var kg = toNum($("recKg").value);
     if (!vehicle || !driver || !date || !isNum(litres) || litres <= 0 ||
         !isNum(kg) || kg <= 0) {
-      recMsg("Vehicle, Driver, Date, Litres aur KG zaroori hain.", false);
+      recMsg("Vehicle, Driver, Date, Litres aur KG zaroori hain — Litres aur KG dono khud likhein.", false);
       return;
     }
+    // Receiver box khatam: receiver seedha logged-in user ka real naam.
     var row = {
       vehicle_number: vehicle,
       driver_name: driver,
       company_name: $("recCompany").value.trim() || null,
-      receiver_name: $("recReceiver").value.trim() || null,
+      receiver_name: authName(),
       record_date: date,
       record_time: $("recTime").value || null,
       diesel_litres: litres,
       diesel_kg: kg,
-      owner_id: authSession.user ? authSession.user.id : null,
-      saved_by_name: authName() || null
+      saved_by_name: authName()
     };
     $("recSaveBtn").disabled = true;
-    recApi("/diesel_records", {
-      method: "POST",
-      body: JSON.stringify(row),
-      prefer: "return=representation",
-      authToken: authSession.access_token
-    })
+    var isEdit = !!editingRecordId;
+    var req;
+    if (isEdit) {
+      req = recApi("/diesel_records?id=eq." + encodeURIComponent(editingRecordId), {
+        method: "PATCH",
+        body: JSON.stringify(row),
+        prefer: "return=representation",
+        authToken: authSession.access_token
+      });
+    } else {
+      row.owner_id = authSession.user ? authSession.user.id : null;
+      req = recApi("/diesel_records", {
+        method: "POST",
+        body: JSON.stringify(row),
+        prefer: "return=representation",
+        authToken: authSession.access_token
+      });
+    }
+    req
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       })
       .then(function () {
-        recMsg("Record save ho gaya.", true);
+        recMsg(isEdit ? "Record update ho gaya." : "Record save ho gaya.", true);
+        cancelEdit();
         $("recLitres").value = "";
         $("recKg").value = "";
         loadRecords();
       })
       .catch(function () {
-        recMsg("Record save nahi hua — database/table check karein.", false);
+        recMsg(isEdit
+          ? "Record update nahi hua — sirf apna record update ho sakta hai. Agar ye aapka record hai to admin se SQL v4 (edit/delete permission) run karwayein."
+          : "Record save nahi hua — database/table check karein.", false);
       })
       .then(function () {
         renderAuth();
@@ -1106,29 +1208,6 @@
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   });
-
-  /* ----- install button ----- */
-  var installBtn = $("installBtn");
-  var installSteps = $("installSteps");
-  function updateInstallVisibility() {
-    var standalone = false;
-    try {
-      standalone = window.matchMedia("(display-mode: standalone)").matches ||
-        !!window.navigator.standalone;
-    } catch (e) { /* ignore */ }
-    if (standalone) { installBtn.hidden = true; installSteps.hidden = true; }
-  }
-  window.addEventListener("beforeinstallprompt", function () {
-    installBtn.hidden = false;
-  });
-  var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || "");
-  if (isIOS && !window.navigator.standalone) {
-    installBtn.hidden = false;
-  }
-  installBtn.addEventListener("click", function () {
-    installSteps.hidden = !installSteps.hidden;
-  });
-  updateInstallVisibility();
 
   /* ----- service worker ----- */
   if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) {

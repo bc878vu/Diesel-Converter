@@ -127,13 +127,6 @@
     <button type="button" class="copy-btn" id="copySecond">Result Copy Karein</button>
   </section>
 
-  <!-- Install -->
-  <button type="button" class="install-btn" id="installBtn" hidden>App Install Karein</button>
-  <div class="install-steps" id="installSteps" hidden>
-    <p><strong>Android (Chrome):</strong> Menu (⋮) → Install app ya Add to Home Screen.</p>
-    <p><strong>iPhone (Safari):</strong> Share button → Add to Home Screen.</p>
-  </div>
-
   <footer class="app-footer">
     <span class="footer-line" aria-hidden="true"></span>
     <span>Develop by Asad Engineer</span>
@@ -263,10 +256,6 @@
             <input type="text" id="recCompany" autocomplete="off" placeholder="Diesel company">
           </div>
           <div>
-            <label class="field-label" for="recReceiver">Receiver Name</label>
-            <input type="text" id="recReceiver" autocomplete="off" placeholder="Jis ne receive kiya">
-          </div>
-          <div>
             <label class="field-label" for="recDate">Date *</label>
             <input type="date" id="recDate">
           </div>
@@ -283,8 +272,9 @@
             <input type="number" id="recKg" inputmode="decimal" min="0" step="any" placeholder="0">
           </div>
         </div>
-        <p class="sheet-note">Litres likhne par KG current density se khud nikal aayega (aur KG likhne par Litres) — dono edit ho sakte hain.</p>
+        <p class="sheet-note">Receiver aapka apna real naam hoga — ye box khatam kar diya gaya hai, naam login se auto aayega. Litres aur KG dono khud likhein — record form me koi auto calculation nahi hogi.</p>
         <button type="submit" class="save-btn" id="recSaveBtn">Record Save Karein</button>
+        <button type="button" class="copy-btn" id="recCancelEditBtn" hidden>Edit Cancel Karein</button>
         <p class="form-msg" id="recMsg" role="status"></p>
       </form>
 
