@@ -333,7 +333,18 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   .ckey { min-height: 50px; }
 }
 
-/* ---- Records ---- */
+/* ---- Records + Auth ---- */
+.auth-box {
+  background: #123f27;
+  border: 1px solid #2a6b45;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.auth-note { color: #d7e8dc; margin: 0 0 10px; line-height: 1.5; }
+.auth-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.auth-actions .save-btn, .auth-actions .copy-btn { margin-top: 0; flex: 1; }
+#recBy:disabled { opacity: 0.85; cursor: not-allowed; background: #123f27; }
 .rec-sheet { max-width: 640px; }
 .rec-body { padding: 14px 16px 18px; overflow-y: auto; }
 .form-grid {

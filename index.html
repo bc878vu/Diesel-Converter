@@ -210,8 +210,42 @@
         Tab tak records save ya list nahi honge. Converter aur calculator bilkul theek chal rahe hain.
       </div>
 
+      <div class="auth-box" id="authBox">
+        <div id="authLoggedOut">
+          <p class="auth-note">Record save karne ke liye login zaroori hai. Visitor sirf app use kar sakte hain aur records dekh sakte hain — save ya edit nahi kar sakte.</p>
+          <div class="form-grid">
+            <div>
+              <label class="field-label" for="authName">Aapka Naam (Register ke liye) *</label>
+              <input type="text" id="authName" autocomplete="name" placeholder="Apna naam">
+            </div>
+            <div>
+              <label class="field-label" for="authEmail">Email *</label>
+              <input type="email" id="authEmail" autocomplete="email" placeholder="Email">
+            </div>
+            <div>
+              <label class="field-label" for="authPassword">Password *</label>
+              <input type="password" id="authPassword" autocomplete="current-password" placeholder="Password">
+            </div>
+          </div>
+          <div class="auth-actions">
+            <button type="button" class="save-btn" id="authLoginBtn">Login</button>
+            <button type="button" class="copy-btn" id="authSignupBtn">Register</button>
+          </div>
+          <p class="form-msg" id="authMsg" role="status"></p>
+          <p class="sheet-note">Register par aapka naam aapke account se save ho jayega, aur record save karte waqt wohi naam auto likha jayega — usay edit nahi kiya ja sakega.</p>
+        </div>
+        <div id="authLoggedIn" hidden>
+          <p class="auth-note">Logged in as: <strong id="authUserName"></strong> (<span id="authUserEmail"></span>)</p>
+          <button type="button" class="copy-btn" id="authLogoutBtn">Logout</button>
+        </div>
+      </div>
+
       <form id="recForm" novalidate>
         <div class="form-grid">
+          <div>
+            <label class="field-label" for="recBy">Record By (Auto — Edit Nahi Ho Sakta)</label>
+            <input type="text" id="recBy" disabled placeholder="Login ke baad aapka naam yahan auto aayega">
+          </div>
           <div>
             <label class="field-label" for="recVehicle">Vehicle Number *</label>
             <input type="text" id="recVehicle" autocomplete="off" placeholder="e.g. LHR-1234">

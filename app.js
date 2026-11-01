@@ -303,11 +303,12 @@
     return s;
   }
   function buildCSV(rows) {
-    var lines = ["Date,Time,Vehicle,Driver,Company,Receiver,Litres,KG"];
+    var lines = ["Date,Time,Vehicle,Driver,Company,Receiver,Litres,KG,Saved By"];
     rows.forEach(function (r) {
       lines.push([
         r.record_date, r.record_time, r.vehicle_number, r.driver_name,
-        r.company_name, r.receiver_name, r.diesel_litres, r.diesel_kg
+        r.company_name, r.receiver_name, r.diesel_litres, r.diesel_kg,
+        r.saved_by_name
       ].map(csvCell).join(","));
     });
     return "\ufeff" + lines.join("\n") + "\n";
@@ -645,9 +646,10 @@
 
   function recApi(path, options) {
     var cfg = window.DIESEL_CONFIG;
+    var token = (options && options.authToken) || cfg.SUPABASE_ANON_KEY;
     var headers = {
       apikey: cfg.SUPABASE_ANON_KEY,
-      Authorization: "Bearer " + cfg.SUPABASE_ANON_KEY
+      Authorization: "Bearer " + token
     };
     if (options && options.body) headers["Content-Type"] = "application/json";
     if (options && options.prefer) headers.Prefer = options.prefer;
@@ -655,6 +657,83 @@
       method: (options && options.method) || "GET",
       headers: headers,
       body: (options && options.body) || undefined
+    });
+  }
+  /* ----- auth: registered users only can save ----- */
+  var authSession = null;
+  try {
+    var stored = window.localStorage.getItem("diesel_auth");
+    if (stored) authSession = JSON.parse(stored);
+  } catch (e) { authSession = null; }
+  function authSaveSession(session) {
+    authSession = session || null;
+    try {
+      if (session) window.localStorage.setItem("diesel_auth", JSON.stringify(session));
+      else window.localStorage.removeItem("diesel_auth");
+    } catch (e) { /* storage optional */ }
+  }
+  function authName() {
+    if (!authSession || !authSession.user) return "";
+    var meta = authSession.user.user_metadata || {};
+    return meta.full_name || authSession.user.email || "";
+  }
+  function authCall(path, body, token) {
+    var cfg = window.DIESEL_CONFIG;
+    return fetch(cfg.SUPABASE_URL + "/auth/v1" + path, {
+      method: "POST",
+      headers: {
+        apikey: cfg.SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + (token || cfg.SUPABASE_ANON_KEY),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body || {})
+    });
+  }
+  function authMsg(text, ok) {
+    var el = $("authMsg");
+    el.textContent = text;
+    el.className = "form-msg" + (ok ? " ok" : text ? " err" : "");
+  }
+  function renderAuth() {
+    var loggedIn = !!authSession;
+    $("authLoggedOut").hidden = loggedIn;
+    $("authLoggedIn").hidden = !loggedIn;
+    if (loggedIn) {
+      $("authUserName").textContent = authName();
+      $("authUserEmail").textContent = authSession.user.email || "";
+    }
+    $("recBy").value = loggedIn ? authName() : "";
+    $("recSaveBtn").disabled = !recConfigured || !loggedIn;
+  }
+  function authValidate() {
+    if (!authSession || !authSession.access_token) { renderAuth(); return; }
+    var cfg = window.DIESEL_CONFIG;
+    fetch(cfg.SUPABASE_URL + "/auth/v1/user", {
+      headers: {
+        apikey: cfg.SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + authSession.access_token
+      }
+    }).then(function (res) {
+      if (res.ok) return res.json();
+      if (authSession.refresh_token) {
+        return authCall("/token?grant_type=refresh_token",
+          { refresh_token: authSession.refresh_token })
+          .then(function (r) {
+            if (!r.ok) throw new Error("refresh failed");
+            return r.json();
+          })
+          .then(function (s) { authSaveSession(s); return s.user; });
+      }
+      throw new Error("session expired");
+    }).then(function (user) {
+      if (user && authSession) {
+        authSession.user = user;
+        authSaveSession(authSession);
+      }
+      renderAuth();
+    }).catch(function () {
+      authSaveSession(null);
+      renderAuth();
     });
   }
   function recMsg(text, ok) {
@@ -703,7 +782,8 @@
         (r.record_time ? " " + String(r.record_time).slice(0, 5) : "") +
         " • Driver: " + (r.driver_name || "") +
         (r.company_name ? " • Company: " + r.company_name : "") +
-        (r.receiver_name ? " • Receiver: " + r.receiver_name : "");
+        (r.receiver_name ? " • Receiver: " + r.receiver_name : "") +
+        (r.saved_by_name ? " • By: " + r.saved_by_name : "");
       item.appendChild(top);
       item.appendChild(meta);
       list.appendChild(item);
@@ -728,7 +808,8 @@
   function openRecords() {
     recOverlay.hidden = false;
     $("recSetupNote").hidden = recConfigured;
-    $("recSaveBtn").disabled = !recConfigured;
+    renderAuth();
+    if (recConfigured) authValidate();
     if (!$("recDate").value) $("recDate").value = localISODate(new Date());
     if (!$("recTime").value) {
       var now = new Date();
@@ -759,10 +840,62 @@
       $("recLitres").value = fmt2(kgToLitres(k, density));
     }
   });
+  $("authLoginBtn").addEventListener("click", function () {
+    if (!recConfigured) { authMsg("Database setup pending — pehle Supabase set karein.", false); return; }
+    var email = $("authEmail").value.trim();
+    var password = $("authPassword").value;
+    if (!email || !password) { authMsg("Email aur password zaroori hain.", false); return; }
+    authCall("/token?grant_type=password", { email: email, password: password })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (s) {
+        authSaveSession(s);
+        authMsg("Login ho gaya.", true);
+        renderAuth();
+      })
+      .catch(function () { authMsg("Login nahi hua — email/password check karein.", false); });
+  });
+  $("authSignupBtn").addEventListener("click", function () {
+    if (!recConfigured) { authMsg("Database setup pending — pehle Supabase set karein.", false); return; }
+    var name = $("authName").value.trim();
+    var email = $("authEmail").value.trim();
+    var password = $("authPassword").value;
+    if (!name || !email || !password) { authMsg("Naam, email aur password zaroori hain.", false); return; }
+    authCall("/signup", { email: email, password: password, data: { full_name: name } })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (s) {
+        if (s && s.access_token) {
+          authSaveSession(s);
+          authMsg("Register + login ho gaya.", true);
+          renderAuth();
+        } else {
+          authMsg("Register ho gaya — apni email confirm karein, phir login karein.", true);
+        }
+      })
+      .catch(function () { authMsg("Register nahi hua — email pehle se ho sakta hai ya password chhota hai.", false); });
+  });
+  $("authLogoutBtn").addEventListener("click", function () {
+    if (authSession && authSession.access_token) {
+      authCall("/logout", {}, authSession.access_token).catch(function () { /* ignore */ });
+    }
+    authSaveSession(null);
+    authMsg("Logout ho gaya.", true);
+    renderAuth();
+  });
+
   $("recForm").addEventListener("submit", function (ev) {
     ev.preventDefault();
     if (!recConfigured) {
       recMsg("Database setup pending — pehle config.js mein Supabase set karein.", false);
+      return;
+    }
+    if (!authSession) {
+      recMsg("Record save karne ke liye pehle login karein — visitor sirf dekh sakte hain.", false);
       return;
     }
     var vehicle = $("recVehicle").value.trim();
@@ -783,13 +916,16 @@
       record_date: date,
       record_time: $("recTime").value || null,
       diesel_litres: litres,
-      diesel_kg: kg
+      diesel_kg: kg,
+      owner_id: authSession.user ? authSession.user.id : null,
+      saved_by_name: authName() || null
     };
     $("recSaveBtn").disabled = true;
     recApi("/diesel_records", {
       method: "POST",
       body: JSON.stringify(row),
-      prefer: "return=representation"
+      prefer: "return=representation",
+      authToken: authSession.access_token
     })
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
@@ -805,7 +941,7 @@
         recMsg("Record save nahi hua — database/table check karein.", false);
       })
       .then(function () {
-        $("recSaveBtn").disabled = false;
+        renderAuth();
       });
   });
 
