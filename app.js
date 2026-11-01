@@ -955,28 +955,6 @@
       })
       .catch(function () { authMsg("Login nahi hua — email/password check karein.", false); });
   });
-  $("authSignupBtn").addEventListener("click", function () {
-    if (!recConfigured) { authMsg("Database setup pending — pehle Supabase set karein.", false); return; }
-    var name = $("authName").value.trim();
-    var email = $("authEmail").value.trim();
-    var password = $("authPassword").value;
-    if (!name || !email || !password) { authMsg("Naam, email aur password zaroori hain.", false); return; }
-    authCall("/signup", { email: email, password: password, data: { full_name: name } })
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json();
-      })
-      .then(function (s) {
-        if (s && s.access_token) {
-          authSaveSession(s);
-          authMsg("Register + login ho gaya.", true);
-          renderAuth();
-        } else {
-          authMsg("Register ho gaya — apni email confirm karein, phir login karein.", true);
-        }
-      })
-      .catch(function () { authMsg("Register nahi hua — email pehle se ho sakta hai ya password chhota hai.", false); });
-  });
   $("authLogoutBtn").addEventListener("click", function () {
     if (authSession && authSession.access_token) {
       authCall("/logout", {}, authSession.access_token).catch(function () { /* ignore */ });
