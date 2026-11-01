@@ -815,30 +815,37 @@
     });
   }
   function renderPickers() {
-    // Always include the current period too, so the picker is never
-    // empty even when no records exist yet (e.g. Monthly shows the
-    // current month name, clicking it shows that month's records — 0
-    // until the first record is saved).
+    // Monthly: full month list (all 12 names) + a year list beside it,
+    // so month + year are picked together (e.g. November + 2026).
+    // Yearly: full year list around the current year.
+    // Weekly: weeks that have records, plus the current week.
+    // Lists never depend on records existing, so they show even with
+    // an empty table — picking a period with no records shows 0 records.
     var today = localISODate(new Date());
-    var months = distinctSorted(allRecords.map(function (r) {
-      return (r.record_date || "").slice(0, 7);
-    }).concat([today.slice(0, 7)]));
+    var curYear = parseInt(today.slice(0, 4), 10);
+    var yearRange = [];
+    for (var y = curYear - 2; y <= curYear + 2; y += 1) yearRange.push(String(y));
     var weeks = distinctSorted(allRecords.map(function (r) {
       return r.record_date ? weekStartISO(r.record_date) : "";
     }).concat([weekStartISO(today)]));
-    var years = distinctSorted(allRecords.map(function (r) {
-      return (r.record_date || "").slice(0, 4);
-    }).concat([today.slice(0, 4)]));
-    if (!recSelectedMonth && months.length) recSelectedMonth = months[0];
+    if (!recSelectedMonth) recSelectedMonth = today.slice(0, 7);
     if (!recSelectedWeek && weeks.length) recSelectedWeek = weeks[0];
-    if (!recSelectedYear && years.length) recSelectedYear = years[0];
-    renderPickerList("monthList", months, recSelectedMonth, monthLabel, function (v) {
-      recSelectedMonth = v; renderPickers(); renderRecList();
+    if (!recSelectedYear) recSelectedYear = String(curYear);
+    var selMonthNum = recSelectedMonth.slice(5, 7);
+    var selMonthYear = recSelectedMonth.slice(0, 4);
+    var allMonths = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
+    renderPickerList("monthList", allMonths, selMonthNum, function (v) {
+      return MONTH_NAMES[parseInt(v, 10) - 1];
+    }, function (v) {
+      recSelectedMonth = selMonthYear + "-" + v; renderPickers(); renderRecList();
+    });
+    renderPickerList("monthYearList", yearRange, selMonthYear, function (v) { return v; }, function (v) {
+      recSelectedMonth = v + "-" + selMonthNum; renderPickers(); renderRecList();
     });
     renderPickerList("weekList", weeks, recSelectedWeek, weekLabel, function (v) {
       recSelectedWeek = v; renderPickers(); renderRecList();
     });
-    renderPickerList("yearList", years, recSelectedYear, function (v) { return v; }, function (v) {
+    renderPickerList("yearList", yearRange, recSelectedYear, function (v) { return v; }, function (v) {
       recSelectedYear = v; renderPickers(); renderRecList();
     });
   }
