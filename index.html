@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diesel Converter</title>
+<meta name="description" content="Diesel Converter — Liters se KG, KG se Liters. 1 liter ka weight set karein, hisaab foran.">
+<meta name="theme-color" content="#0b3d20">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#0e4a26">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Diesel Converter">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="64x64" href="./icons/favicon.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<main class="wrap">
+
+  <!-- Top actions: Calculator + Record -->
+  <section class="action-row" aria-label="Tools">
+    <button type="button" class="tool-btn" id="openCalc">
+      <span class="tool-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#e9ba4e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M8 18h.01M12 18h.01"/></svg>
+      </span>
+      <span class="tool-text">
+        <span class="tool-title">Calculator</span>
+        <span class="tool-sub">Scientific — sin, cos, log, √, x²</span>
+      </span>
+      <span class="tool-chev" aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="tool-btn" id="openRecords">
+      <span class="tool-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#e9ba4e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      </span>
+      <span class="tool-text">
+        <span class="tool-title">Record</span>
+        <span class="tool-sub">Diesel record save karein</span>
+      </span>
+      <span class="tool-chev" aria-hidden="true">›</span>
+    </button>
+  </section>
+
+  <!-- Step 1: density -->
+  <section class="card" id="step1Card" aria-label="1 liter ka weight">
+    <h2>1 Liter ka Weight (kg)</h2>
+    <label class="field-label" for="sampleLitres">Sample — Kitne Litre?</label>
+    <div class="input-wrap">
+      <input type="number" id="sampleLitres" inputmode="decimal" min="0" step="any" value="1" autocomplete="off">
+      <span class="unit">L</span>
+    </div>
+    <label class="field-label" for="sampleKg">Un Litron ka Wazan / 1 Litre ka Wazan</label>
+    <div class="input-wrap">
+      <input type="number" id="sampleKg" inputmode="decimal" min="0" step="any" value="0.832" autocomplete="off">
+      <span class="unit">kg</span>
+    </div>
+
+    <div class="warning" id="densityWarning" hidden>
+      ⚠️ Yeh reading ghalat lag rahi hai. Diesel ka 1 litre ka wazan aam tor par
+      0.70 se 1.00 kg/L ke darmiyan hota hai — is reading se us se bahar ka wazan
+      nikal raha hai. Lagta hai total stock ke litre sample mein likh diye gaye hain.
+      Agar aap ko 1 litre ka wazan pehle se maloom hai (masalan 0.830), to neeche
+      wale field mein seedha wahi likh dein.
+    </div>
+
+    <div class="bulk-box" id="bulkBox" hidden>
+      <div class="bulk-label">Total Wazan</div>
+      <div class="bulk-value"><span id="bulkKg">4150.00</span> KG</div>
+      <div class="bulk-formula" id="bulkFormula">5000 L × 0.830 = 4150.00 kg</div>
+    </div>
+
+    <label class="field-label" for="directDensity">Ya seedha 1 Litre ka weight likhein — kabhi bhi badal sakte hain</label>
+    <div class="input-wrap">
+      <input type="number" id="directDensity" inputmode="decimal" min="0" step="any" value="0.832" autocomplete="off">
+      <span class="unit">kg/L</span>
+    </div>
+
+    <div class="field-label">Ya aam wazan chunein (1 L = kg):</div>
+    <div class="chips" id="presetChips">
+      <button type="button" class="chip" data-density="0.820">0.820</button>
+      <button type="button" class="chip chip-active" data-density="0.832">0.832</button>
+      <button type="button" class="chip" data-density="0.845">0.845</button>
+    </div>
+  </section>
+
+  <!-- Converter 1: flippable -->
+  <section class="card" id="firstCard" aria-label="Liters se KG converter">
+    <div class="card-head">
+      <div>
+        <h2 id="firstTitle">Liters se KG</h2>
+        <p class="card-sub" id="firstSub">Liters daakhil karo</p>
+      </div>
+      <button type="button" class="swap-btn" id="swapFirst" aria-label="Direction badlein" aria-pressed="false" title="KG se Liters / Liters se KG">⇄</button>
+    </div>
+    <div class="input-wrap">
+      <input type="number" id="firstInput" inputmode="decimal" min="0" step="any" value="10" autocomplete="off">
+      <span class="unit" id="firstUnit">L</span>
+    </div>
+    <div class="result-box gold">
+      <div class="result-value"><span id="firstResult">8.32</span> <span id="firstResultUnit">KG</span></div>
+      <div class="result-formula" id="firstFormula">10 L × 0.832 = 8.32 kg</div>
+    </div>
+    <button type="button" class="copy-btn" id="copyFirst">Result Copy Karein</button>
+  </section>
+
+  <!-- Converter 2: KG se Liters -->
+  <section class="card" aria-label="KG se Liters converter">
+    <div class="card-head">
+      <div>
+        <h2>KG se Liters</h2>
+        <p class="card-sub">Kilograms daakhil karo</p>
+      </div>
+      <span class="head-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#e9ba4e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="16" y1="14" x2="16" y2="18"/><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M8 18h.01M12 18h.01"/></svg>
+      </span>
+    </div>
+    <div class="input-wrap">
+      <input type="number" id="secondInput" inputmode="decimal" min="0" step="any" value="5" autocomplete="off">
+      <span class="unit">kg</span>
+    </div>
+    <div class="result-box green">
+      <div class="result-value"><span id="secondResult">6.01</span> Liters</div>
+      <div class="result-formula" id="secondFormula">5 kg ÷ 0.832 = 6.01 L</div>
+    </div>
+    <button type="button" class="copy-btn" id="copySecond">Result Copy Karein</button>
+  </section>
+
+  <!-- Install -->
+  <button type="button" class="install-btn" id="installBtn" hidden>App Install Karein</button>
+  <div class="install-steps" id="installSteps" hidden>
+    <p><strong>Android (Chrome):</strong> Menu (⋮) → Install app ya Add to Home Screen.</p>
+    <p><strong>iPhone (Safari):</strong> Share button → Add to Home Screen.</p>
+  </div>
+
+  <footer class="app-footer">
+    <span class="footer-line" aria-hidden="true"></span>
+    <span>Develop by Asad Engineer</span>
+  </footer>
+</main>
+
+<!-- Calculator overlay -->
+<div class="overlay" id="calcOverlay" hidden>
+  <div class="sheet calc-sheet" role="dialog" aria-modal="true" aria-label="Scientific calculator">
+    <div class="sheet-head">
+      <strong>Calculator</strong>
+      <button type="button" class="sheet-close" id="closeCalc" aria-label="Band karein">✕</button>
+    </div>
+    <div class="calc-display">
+      <div class="calc-expr" id="calcExpr" aria-label="Expression"></div>
+      <div class="calc-preview" id="calcPreview" aria-label="Live result"></div>
+    </div>
+    <div class="calc-history" id="calcHistory" aria-label="Pichle hisaab"></div>
+    <div class="calc-grid" id="calcGrid">
+      <button type="button" class="ckey small" data-key="mc">MC</button>
+      <button type="button" class="ckey small" data-key="mr">MR</button>
+      <button type="button" class="ckey small" data-key="mplus">M+</button>
+      <button type="button" class="ckey small" data-key="mminus">M−</button>
+      <button type="button" class="ckey small" data-key="deg" id="degBtn">DEG</button>
+      <button type="button" class="ckey small" data-key="inv" id="invBtn">INV</button>
+      <button type="button" class="ckey small" data-key="sin" id="sinBtn">sin</button>
+      <button type="button" class="ckey small" data-key="cos" id="cosBtn">cos</button>
+      <button type="button" class="ckey small" data-key="tan" id="tanBtn">tan</button>
+      <button type="button" class="ckey small" data-key="ln">ln</button>
+      <button type="button" class="ckey small" data-key="log">log</button>
+      <button type="button" class="ckey small" data-key="sqrt">√</button>
+      <button type="button" class="ckey small" data-key="square">x²</button>
+      <button type="button" class="ckey small" data-key="power">xʸ</button>
+      <button type="button" class="ckey small" data-key="fact">!</button>
+      <button type="button" class="ckey small" data-key="(">(</button>
+      <button type="button" class="ckey small" data-key=")">)</button>
+      <button type="button" class="ckey small" data-key="pi">π</button>
+      <button type="button" class="ckey small" data-key="e">e</button>
+      <button type="button" class="ckey small" data-key="percent">%</button>
+      <button type="button" class="ckey" data-key="7">7</button>
+      <button type="button" class="ckey" data-key="8">8</button>
+      <button type="button" class="ckey" data-key="9">9</button>
+      <button type="button" class="ckey op" data-key="back">⌫</button>
+      <button type="button" class="ckey op" data-key="clear">C</button>
+      <button type="button" class="ckey" data-key="4">4</button>
+      <button type="button" class="ckey" data-key="5">5</button>
+      <button type="button" class="ckey" data-key="6">6</button>
+      <button type="button" class="ckey op" data-key="×">×</button>
+      <button type="button" class="ckey op" data-key="÷">÷</button>
+      <button type="button" class="ckey" data-key="1">1</button>
+      <button type="button" class="ckey" data-key="2">2</button>
+      <button type="button" class="ckey" data-key="3">3</button>
+      <button type="button" class="ckey op" data-key="+">+</button>
+      <button type="button" class="ckey op" data-key="−">−</button>
+      <button type="button" class="ckey" data-key="neg">±</button>
+      <button type="button" class="ckey" data-key="0">0</button>
+      <button type="button" class="ckey" data-key=".">.</button>
+      <button type="button" class="ckey eq" data-key="=">=</button>
+    </div>
+    <p class="sheet-note" id="memNote" hidden>Memory set hai (M)</p>
+  </div>
+</div>
+
+<!-- Records overlay -->
+<div class="overlay" id="recOverlay" hidden>
+  <div class="sheet rec-sheet" role="dialog" aria-modal="true" aria-label="Diesel records">
+    <div class="sheet-head">
+      <strong>Diesel Record</strong>
+      <button type="button" class="sheet-close" id="closeRecords" aria-label="Band karein">✕</button>
+    </div>
+    <div class="rec-body">
+      <div class="warning" id="recSetupNote" hidden>
+        Database setup pending — Supabase URL aur anon key config.js mein set karein.
+        Tab tak records save ya list nahi honge. Converter aur calculator bilkul theek chal rahe hain.
+      </div>
+
+      <form id="recForm" novalidate>
+        <div class="form-grid">
+          <div>
+            <label class="field-label" for="recVehicle">Vehicle Number *</label>
+            <input type="text" id="recVehicle" autocomplete="off" placeholder="e.g. LHR-1234">
+          </div>
+          <div>
+            <label class="field-label" for="recDriver">Driver Name *</label>
+            <input type="text" id="recDriver" autocomplete="off" placeholder="Driver ka naam">
+          </div>
+          <div>
+            <label class="field-label" for="recCompany">Company Name</label>
+            <input type="text" id="recCompany" autocomplete="off" placeholder="Diesel company">
+          </div>
+          <div>
+            <label class="field-label" for="recReceiver">Receiver Name</label>
+            <input type="text" id="recReceiver" autocomplete="off" placeholder="Jis ne receive kiya">
+          </div>
+          <div>
+            <label class="field-label" for="recDate">Date *</label>
+            <input type="date" id="recDate">
+          </div>
+          <div>
+            <label class="field-label" for="recTime">Time</label>
+            <input type="time" id="recTime">
+          </div>
+          <div>
+            <label class="field-label" for="recLitres">Diesel (Litres) *</label>
+            <input type="number" id="recLitres" inputmode="decimal" min="0" step="any" placeholder="0">
+          </div>
+          <div>
+            <label class="field-label" for="recKg">Diesel (KG) *</label>
+            <input type="number" id="recKg" inputmode="decimal" min="0" step="any" placeholder="0">
+          </div>
+        </div>
+        <p class="sheet-note">Litres likhne par KG current density se khud nikal aayega (aur KG likhne par Litres) — dono edit ho sakte hain.</p>
+        <button type="submit" class="save-btn" id="recSaveBtn">Record Save Karein</button>
+        <p class="form-msg" id="recMsg" role="status"></p>
+      </form>
+
+      <div class="rec-tools">
+        <div class="filter-row" role="group" aria-label="Filter">
+          <button type="button" class="chip filter-chip chip-active" data-filter="all">All</button>
+          <button type="button" class="chip filter-chip" data-filter="weekly">Weekly</button>
+          <button type="button" class="chip filter-chip" data-filter="monthly">Monthly</button>
+          <button type="button" class="chip filter-chip" data-filter="yearly">Yearly</button>
+          <button type="button" class="chip filter-chip" data-filter="custom">Custom</button>
+        </div>
+        <div class="custom-dates" id="customDates" hidden>
+          <label class="field-label" for="customFrom">From</label>
+          <input type="date" id="customFrom">
+          <label class="field-label" for="customTo">To</label>
+          <input type="date" id="customTo">
+        </div>
+        <input type="search" id="recSearch" placeholder="Search: company, date, vehicle, receiver, driver…" autocomplete="off">
+      </div>
+
+      <div class="totals-box" id="recTotals">
+        <span>Total: <strong id="totLitres">0.00</strong> L</span>
+        <span><strong id="totKg">0.00</strong> KG</span>
+        <span class="tot-count" id="totCount">0 records</span>
+      </div>
+
+      <div class="rec-list" id="recList" aria-label="Records list"></div>
+      <button type="button" class="copy-btn" id="recDownload">Report Download Karein (CSV)</button>
+    </div>
+  </div>
+</div>
+
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
