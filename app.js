@@ -721,6 +721,11 @@
     var meta = authSession.user.user_metadata || {};
     return meta.full_name || authSession.user.email || "";
   }
+  function authHasRealName() {
+    if (!authSession || !authSession.user) return false;
+    var meta = authSession.user.user_metadata || {};
+    return !!(meta.full_name && String(meta.full_name).trim());
+  }
   function authCall(path, body, token) {
     var cfg = window.DIESEL_CONFIG;
     return fetch(cfg.SUPABASE_URL + "/auth/v1" + path, {
@@ -745,6 +750,7 @@
     if (loggedIn) {
       $("authUserName").textContent = authName();
       $("authUserEmail").textContent = authSession.user.email || "";
+      $("authNameSetup").hidden = authHasRealName();
     }
     $("recBy").value = loggedIn ? authName() : "";
     $("recSaveBtn").disabled = !recConfigured || !loggedIn;
@@ -974,6 +980,38 @@
     authSaveSession(null);
     authMsg("Logout ho gaya.", true);
     renderAuth();
+  });
+  $("authSaveNameBtn").addEventListener("click", function () {
+    var nameEl = $("authNameMsg");
+    var name = $("authRealName").value.trim();
+    if (!name) {
+      nameEl.textContent = "Apna real naam likhein.";
+      nameEl.className = "form-msg err";
+      return;
+    }
+    if (!authSession || !authSession.access_token) return;
+    var cfg = window.DIESEL_CONFIG;
+    fetch(cfg.SUPABASE_URL + "/auth/v1/user", {
+      method: "PUT",
+      headers: {
+        apikey: cfg.SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + authSession.access_token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ data: { full_name: name } })
+    }).then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }).then(function (user) {
+      authSession.user = user;
+      authSaveSession(authSession);
+      nameEl.textContent = "Naam save ho gaya — ab har record me yehi naam aayega.";
+      nameEl.className = "form-msg ok";
+      renderAuth();
+    }).catch(function () {
+      nameEl.textContent = "Naam save nahi hua — dobara try karein.";
+      nameEl.className = "form-msg err";
+    });
   });
 
   $("recForm").addEventListener("submit", function (ev) {

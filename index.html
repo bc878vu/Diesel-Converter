@@ -231,6 +231,15 @@
         </div>
         <div id="authLoggedIn" hidden>
           <p class="auth-note">Logged in as: <strong id="authUserName"></strong> (<span id="authUserEmail"></span>)</p>
+          <div id="authNameSetup" hidden>
+            <p class="auth-note">Aapka real naam abhi set nahi hai — pehli dafa apna real naam likhein. Is ke baad yehi naam har record me auto aayega.</p>
+            <label class="field-label" for="authRealName">Apna Real Naam *</label>
+            <input type="text" id="authRealName" autocomplete="name" placeholder="Apna real naam">
+            <div class="auth-actions">
+              <button type="button" class="save-btn" id="authSaveNameBtn">Naam Save Karein</button>
+            </div>
+            <p class="form-msg" id="authNameMsg" role="status"></p>
+          </div>
           <button type="button" class="copy-btn" id="authLogoutBtn">Logout</button>
         </div>
       </div>
