@@ -815,15 +815,20 @@
     });
   }
   function renderPickers() {
+    // Always include the current period too, so the picker is never
+    // empty even when no records exist yet (e.g. Monthly shows the
+    // current month name, clicking it shows that month's records — 0
+    // until the first record is saved).
+    var today = localISODate(new Date());
     var months = distinctSorted(allRecords.map(function (r) {
       return (r.record_date || "").slice(0, 7);
-    }));
+    }).concat([today.slice(0, 7)]));
     var weeks = distinctSorted(allRecords.map(function (r) {
       return r.record_date ? weekStartISO(r.record_date) : "";
-    }));
+    }).concat([weekStartISO(today)]));
     var years = distinctSorted(allRecords.map(function (r) {
       return (r.record_date || "").slice(0, 4);
-    }));
+    }).concat([today.slice(0, 4)]));
     if (!recSelectedMonth && months.length) recSelectedMonth = months[0];
     if (!recSelectedWeek && weeks.length) recSelectedWeek = weeks[0];
     if (!recSelectedYear && years.length) recSelectedYear = years[0];
