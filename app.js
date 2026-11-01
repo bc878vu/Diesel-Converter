@@ -247,19 +247,57 @@
     end.setDate(start.getDate() + 6);
     return { from: localISODate(start), to: localISODate(end) };
   }
-  function filterRecords(records, mode, customFrom, customTo, now) {
+  function parseISODate(s) {
+    var parts = String(s || "").split("-");
+    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  }
+  function addDaysISO(s, days) {
+    var d = parseISODate(s);
+    d.setDate(d.getDate() + days);
+    return localISODate(d);
+  }
+  function weekStartISO(s) {
+    var d = parseISODate(s);
+    var shift = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - shift);
+    return localISODate(d);
+  }
+  var MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+  var MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function monthLabel(yyyymm) {
+    var parts = String(yyyymm || "").split("-");
+    var m = parseInt(parts[1], 10);
+    if (!m || m < 1 || m > 12) return yyyymm;
+    return MONTH_NAMES[m - 1] + " " + parts[0];
+  }
+  function weekLabel(startISO) {
+    var endISO = addDaysISO(startISO, 6);
+    var a = parseISODate(startISO);
+    var b = parseISODate(endISO);
+    return a.getDate() + " " + MONTH_SHORT[a.getMonth()] + " – " +
+      b.getDate() + " " + MONTH_SHORT[b.getMonth()] + " " + b.getFullYear();
+  }
+  function filterRecords(records, mode, customFrom, customTo, now, selected) {
     var from = null;
     var to = null;
     if (mode === "weekly") {
-      var w = weekBounds(now || new Date());
-      from = w.from; to = w.to;
+      if (selected && selected.week) {
+        from = selected.week; to = addDaysISO(selected.week, 6);
+      } else {
+        var w = weekBounds(now || new Date());
+        from = w.from; to = w.to;
+      }
     } else if (mode === "monthly") {
-      var prefix = localISODate(now || new Date()).slice(0, 7);
+      var prefix = (selected && selected.month) ||
+        localISODate(now || new Date()).slice(0, 7);
       return records.filter(function (r) {
         return (r.record_date || "").slice(0, 7) === prefix;
       });
     } else if (mode === "yearly") {
-      var year = String((now || new Date()).getFullYear());
+      var year = (selected && selected.year) ||
+        String((now || new Date()).getFullYear());
       return records.filter(function (r) {
         return (r.record_date || "").slice(0, 4) === year;
       });
@@ -330,7 +368,10 @@
       sumTotals: sumTotals,
       buildCSV: buildCSV,
       localISODate: localISODate,
-      weekBounds: weekBounds
+      weekBounds: weekBounds,
+      weekStartISO: weekStartISO,
+      monthLabel: monthLabel,
+      weekLabel: weekLabel
     };
   }
   if (typeof document === "undefined") return;
@@ -643,6 +684,9 @@
   var recCustomTo = "";
   var recQuery = "";
   var recShown = [];
+  var recSelectedMonth = "";
+  var recSelectedWeek = "";
+  var recSelectedYear = "";
 
   function recApi(path, options) {
     var cfg = window.DIESEL_CONFIG;
@@ -741,8 +785,68 @@
     el.textContent = text;
     el.className = "form-msg" + (ok ? " ok" : text ? " err" : "");
   }
+  function distinctSorted(values) {
+    var seen = {};
+    var out = [];
+    values.forEach(function (v) {
+      if (v && !seen[v]) { seen[v] = true; out.push(v); }
+    });
+    out.sort();
+    out.reverse();
+    return out;
+  }
+  function renderPickerList(elId, values, selected, labelFn, onPick) {
+    var el = $(elId);
+    el.innerHTML = "";
+    if (values.length === 0) {
+      var note = document.createElement("span");
+      note.className = "rec-empty";
+      note.textContent = "Abhi koi record nahi hai.";
+      el.appendChild(note);
+      return;
+    }
+    values.forEach(function (v) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip" + (v === selected ? " chip-active" : "");
+      b.textContent = labelFn(v);
+      b.addEventListener("click", function () { onPick(v); });
+      el.appendChild(b);
+    });
+  }
+  function renderPickers() {
+    var months = distinctSorted(allRecords.map(function (r) {
+      return (r.record_date || "").slice(0, 7);
+    }));
+    var weeks = distinctSorted(allRecords.map(function (r) {
+      return r.record_date ? weekStartISO(r.record_date) : "";
+    }));
+    var years = distinctSorted(allRecords.map(function (r) {
+      return (r.record_date || "").slice(0, 4);
+    }));
+    if (!recSelectedMonth && months.length) recSelectedMonth = months[0];
+    if (!recSelectedWeek && weeks.length) recSelectedWeek = weeks[0];
+    if (!recSelectedYear && years.length) recSelectedYear = years[0];
+    renderPickerList("monthList", months, recSelectedMonth, monthLabel, function (v) {
+      recSelectedMonth = v; renderPickers(); renderRecList();
+    });
+    renderPickerList("weekList", weeks, recSelectedWeek, weekLabel, function (v) {
+      recSelectedWeek = v; renderPickers(); renderRecList();
+    });
+    renderPickerList("yearList", years, recSelectedYear, function (v) { return v; }, function (v) {
+      recSelectedYear = v; renderPickers(); renderRecList();
+    });
+  }
+  function updatePickerVisibility() {
+    $("monthPicker").hidden = recFilter !== "monthly";
+    $("weekPicker").hidden = recFilter !== "weekly";
+    $("yearPicker").hidden = recFilter !== "yearly";
+    $("customDates").hidden = recFilter !== "custom";
+  }
   function renderRecList() {
-    var filtered = filterRecords(allRecords, recFilter, recCustomFrom, recCustomTo, new Date());
+    var filtered = filterRecords(allRecords, recFilter, recCustomFrom, recCustomTo, new Date(), {
+      month: recSelectedMonth, week: recSelectedWeek, year: recSelectedYear
+    });
     recShown = searchRecords(filtered, recQuery);
     var totals = sumTotals(recShown);
     $("totLitres").textContent = fmt2(totals.litres);
@@ -750,13 +854,6 @@
     $("totCount").textContent = totals.count + " records";
     var list = $("recList");
     list.innerHTML = "";
-    if (!recConfigured) {
-      var p = document.createElement("p");
-      p.className = "rec-empty";
-      p.textContent = "Database setup pending — records tab tak nahi dikhenge jab tak config.js mein Supabase URL aur anon key set na ho.";
-      list.appendChild(p);
-      return;
-    }
     if (recShown.length === 0) {
       var e = document.createElement("p");
       e.className = "rec-empty";
@@ -798,6 +895,7 @@
       })
       .then(function (rows) {
         allRecords = rows || [];
+        renderPickers();
         renderRecList();
       })
       .catch(function () {
@@ -952,7 +1050,8 @@
       });
       btn.classList.add("chip-active");
       recFilter = btn.getAttribute("data-filter");
-      $("customDates").hidden = recFilter !== "custom";
+      updatePickerVisibility();
+      renderPickers();
       renderRecList();
     });
   });
