@@ -118,6 +118,18 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   color: #9db8a6;
   pointer-events: none;
 }
+.pw-toggle {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 8px 10px;
+  cursor: pointer;
+}
 .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
 .chip {
   min-height: 46px;

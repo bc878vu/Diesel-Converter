@@ -227,14 +227,16 @@
             </div>
             <div>
               <label class="field-label" for="authPassword">Password *</label>
-              <input type="password" id="authPassword" autocomplete="current-password" placeholder="Password">
+              <div class="input-wrap">
+                <input type="password" id="authPassword" autocomplete="current-password" placeholder="Password">
+                <button type="button" class="pw-toggle" id="authPwToggle" aria-label="Show password">👁️</button>
+              </div>
             </div>
           </div>
           <div class="auth-actions">
             <button type="button" class="save-btn" id="authLoginBtn">Login</button>
           </div>
           <p class="form-msg" id="authMsg" role="status"></p>
-          <p class="sheet-note">Login ke baad record save karte waqt aapka naam auto likha jayega — usay edit nahi kiya ja sakega.</p>
         </div>
         <div id="authNameSetup" hidden>
           <p class="auth-note">Aapka real naam abhi set nahi hai — pehli dafa apna real naam likhein. Is ke baad yehi naam har record me auto aayega.</p>

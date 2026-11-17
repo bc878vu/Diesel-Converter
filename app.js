@@ -331,15 +331,6 @@
     });
     return { litres: litres, kg: kg, count: records.length };
   }
-  function csvCell(v) {
-    // Excel splits .csv on commas, so quote any value holding a comma,
-    // quote, or newline (standard CSV) instead of flattening it.
-    var s = v === null || v === undefined ? "" : String(v);
-    if (s.indexOf(",") !== -1 || s.indexOf('"') !== -1 || s.indexOf("\r") !== -1 || s.indexOf("\n") !== -1) {
-      return '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
-  }
   function fmtCsvDate(iso) {
     // "2026-10-31" -> "10/31/2026" (template format, no zero padding)
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
@@ -356,37 +347,6 @@
     // Template shows whole numbers without decimals (5000, not 5000.00)
     return String(Math.round((parseFloat(n) || 0) * 100) / 100);
   }
-  function buildCSV(rows) {
-    // Layout matches the user's sample file exactly: 9 columns, CRLF endings,
-    // no BOM, title row, two-row Diesel header, 4 blank rows, then the Total
-    // row. Delimiter is a comma (not a tab) because Excel splits .csv on
-    // commas — a tab file collapses into one column on double-click.
-    // rows is the filtered+searched set, so every filter and the search
-    // apply to the download as well.
-    var T = ",";
-    var lines = [
-      ["Incoming Diesel Stock", "", "", "", "", "", "", "", ""].join(T),
-      ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver", "Saved By", "Diesel", ""].join(T),
-      ["", "", "", "", "", "", "", "Litres", "KG"].join(T)
-    ];
-    rows.forEach(function (r) {
-      lines.push([
-        fmtCsvDate(r.record_date), fmtCsvTime(r.record_time),
-        r.vehicle_number, r.driver_name, r.company_name,
-        r.receiver_name || r.saved_by_name, r.saved_by_name,
-        fmtCsvNum(r.diesel_litres), fmtCsvNum(r.diesel_kg)
-      ].map(csvCell).join(T));
-    });
-    var blank = ["", "", "", "", "", "", "", "", ""].join(T);
-    lines.push(blank, blank, blank, blank);
-    var tot = sumTotals(rows);
-    lines.push([
-      "Total", "", "", "", "", "", "",
-      fmtCsvNum(tot.litres), fmtCsvNum(tot.kg)
-    ].join(T));
-    return lines.join("\r\n") + "\r\n";
-  }
-
   function escXml(v) {
     return String(v === null || v === undefined ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
@@ -580,7 +540,6 @@
       filterRecords: filterRecords,
       searchRecords: searchRecords,
       sumTotals: sumTotals,
-      buildCSV: buildCSV,
       localISODate: localISODate,
       weekBounds: weekBounds,
       weekStartISO: weekStartISO,
@@ -1172,6 +1131,58 @@
     }
     $("recSaveBtn").disabled = !recConfigured || !loggedIn;
   }
+  var authBusy = false;
+  function authStamp(s) {
+    if (s && s.expires_in) s.expires_at = Date.now() + s.expires_in * 1000;
+    return s;
+  }
+  function authAdopt() {
+    // Doosri tab/device ne refresh kar liya ho to us ka naya session
+    // apna lein — purane refresh token par 400/401 aana logout nahi.
+    try {
+      var raw = window.localStorage.getItem("diesel_auth");
+      if (!raw) return false;
+      var st = JSON.parse(raw);
+      if (st && st.access_token && (!authSession || st.access_token !== authSession.access_token)) {
+        authSession = st;
+        return true;
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+  function authRefresh() {
+    // Access token (1 ghanta) khatam hone se pehle refresh — session
+    // kabhi khud se logout na ho. Sirf 400/401 invalid token par
+    // expired; network/5xx par session barkarar, baad mein dobara
+    // try hoga (timer har 20 min koshish karta hai). Aik waqt mein
+    // sirf aik refresh (doosri tab ke sath race nahi).
+    if (authBusy) return Promise.resolve({ inFlight: true });
+    if (!authSession || !authSession.refresh_token) return Promise.resolve({ expired: true });
+    authBusy = true;
+    return authCall("/token?grant_type=refresh_token", { refresh_token: authSession.refresh_token })
+      .then(function (r) {
+        if (r.ok) return r.json().then(function (s) { authSaveSession(authStamp(s)); return { ok: true }; });
+        if (r.status === 400 || r.status === 401) return authAdopt() ? { ok: true } : { expired: true };
+        return { transient: true };
+      })
+      .catch(function () { return { transient: true }; })
+      .then(function (out) { authBusy = false; return out; });
+  }
+  function authDone(out) {
+    if (out && out.expired) {
+      authSaveSession(null);
+      authMsg("Session khatam ho gaya — dobara login karein.", false);
+    }
+    renderAuth();
+  }
+  function authKeep(fromBoot) {
+    // Token khatam hone se 10 min pehle refresh kar lo. expires_at
+    // nahi hai (purana session) to boot par kuch nahi — sheet khulte
+    // waqt aik dafa refresh kar ke expires_at lag jata hai.
+    if (!authSession || !authSession.access_token) return;
+    if (!authSession.expires_at) { if (!fromBoot) authRefresh().then(authDone); return; }
+    if (Date.now() > authSession.expires_at - 600000) authRefresh().then(authDone);
+  }
   function authValidate() {
     // Session check: EXPIRED token (401/403 + refresh fail) par hi logout;
     // network failure ya transient server error par session BARKARAR
@@ -1188,14 +1199,11 @@
         return res.json().then(function (user) { return { user: user }; });
       }
       if (res.status === 401 || res.status === 403) {
-        if (!authSession.refresh_token) throw { expired: true };
-        return authCall("/token?grant_type=refresh_token",
-          { refresh_token: authSession.refresh_token })
-          .then(function (r) {
-            if (!r.ok) throw { expired: true };
-            return r.json();
-          })
-          .then(function (s) { authSaveSession(s); return { user: s.user }; });
+        return authRefresh().then(function (out) {
+          if (out.ok) return { user: authSession.user };
+          if (out.expired) throw { expired: true };
+          throw { transient: true };
+        });
       }
       throw { transient: true };
     }).then(function (out) {
@@ -1520,7 +1528,7 @@
     recOverlay.hidden = false;
     $("recSetupNote").hidden = recConfigured;
     renderAuth();
-    if (recConfigured) authValidate();
+    if (recConfigured) { authKeep(false); authValidate(); }
     if (!$("recDate").value) $("recDate").value = localISODate(new Date());
     if (!$("recTime").value) {
       var now = new Date();
@@ -1546,9 +1554,16 @@
 
   // Record form me koi auto calculation nahi: user Litres aur KG
   // dono khud likhega. (Upar wala converter apni jagah auto hi rahega.)
+  $("authPwToggle").addEventListener("click", function () {
+    var pw = $("authPassword");
+    var show = pw.type === "password";
+    pw.type = show ? "text" : "password";
+    $("authPwToggle").textContent = show ? "🙈" : "👁️";
+    $("authPwToggle").setAttribute("aria-label", show ? "Hide password" : "Show password");
+    pw.focus();
+  });
   $("authLoginBtn").addEventListener("click", function () {
-    if (!recConfigured) { authMsg("Database setup pending — pehle Supabase set karein.", false); return; }
-    var email = $("authEmail").value.trim();
+    if (!recConfigured) { authMsg("Database setup pending — pehle Supabase set karein.", false); return; }    var email = $("authEmail").value.trim();
     var password = $("authPassword").value;
     if (!email || !password) { authMsg("Email aur password zaroori hain.", false); return; }
     authCall("/token?grant_type=password", { email: email, password: password })
@@ -1557,7 +1572,7 @@
         return res.json();
       })
       .then(function (s) {
-        authSaveSession(s);
+        authSaveSession(authStamp(s));
         authMsg("Login ho gaya.", true);
         renderAuth();
         loadRecords();
@@ -1829,4 +1844,13 @@
   /* ----- initial render ----- */
   applySample();
   calcRender();
+
+  /* ----- session keeper (infinity session): token khatam hone se
+     pehle refresh — app khula ho to har 20 min check, tab wapas
+     aane / online hone / focus par bhi, aur boot par fori. ----- */
+  authKeep(true);
+  setInterval(function () { authKeep(true); }, 20 * 60 * 1000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) authKeep(true); });
+  window.addEventListener("online", function () { authKeep(true); });
+  window.addEventListener("focus", function () { authKeep(true); });
 })();
