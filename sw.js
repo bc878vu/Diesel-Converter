@@ -1,6 +1,6 @@
 /* Diesel Converter service worker — app-shell cache.
    Lives at the project root so its scope covers the whole app. */
-var CACHE_NAME = "diesel-converter-v22";
+var CACHE_NAME = "diesel-converter-v23";
 var SHELL = [
   "./",
   "./index.html",

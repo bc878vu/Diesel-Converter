@@ -1339,8 +1339,8 @@
         " • Driver: " + (r.driver_name || "") +
         (r.company_name ? " • Company: " + r.company_name : "") +
         oneName +
-        (r.diesel_temperature != null ? " • " + fmtCsvNum(r.diesel_temperature) + "°C" : "") +
-        (r.diesel_density_g_per_l != null ? " • " + fmtCsvNum(r.diesel_density_g_per_l) : "") +
+        (r.diesel_temperature != null ? " • Temp: " + fmtCsvNum(r.diesel_temperature) + "°C" : "") +
+        (r.diesel_density_g_per_l != null ? " • Density: " + fmtCsvNum(r.diesel_density_g_per_l) : "") +
         (r._pending ? " • ⏳ Sync pending" : "");
       item.appendChild(top);
       item.appendChild(meta);
