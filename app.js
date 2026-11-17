@@ -1530,12 +1530,8 @@
       if (mm.length < 2) mm = "0" + mm;
       $("recTime").value = hh + ":" + mm;
     }
-    // v17: Density field mein converter ki current density (g/L) pehle se
-    // bhari ho — user chahe to badal le; khaali ho to save par null jayega.
-    // Edit mode mein startEdit ki values barkarar (overwrite nahi).
-    if (!editingRecordId && !$("recDensity").value) {
-      $("recDensity").value = String(Math.round(density * 1000));
-    }
+    // Temp + Density: dono fields poori tarah independent — user khud likhe;
+    // converter se koi auto-fill nahi (khaali ho to save par null jayega).
     // Pehle queued ops sync hon, phir taaza list aaye.
     flushOutbox(true).then(function () { loadRecords(); });
     startRecordSync();
