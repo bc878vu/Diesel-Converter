@@ -406,7 +406,7 @@
     var titleRow = "<row r=\"1\" ht=\"30\" customHeight=\"1\">" + strCell("A1", 1, "Incoming Diesel Stock");
     for (i = 1; i < 11; i++) titleRow += emptyCell(cols[i] + "1", 1);
     sheetRows.push(titleRow + "</row>");
-    var headers = ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver", "Saved By", "Diesel", "", "Temp", "Density (g/L)"];
+    var headers = ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver", "Saved By", "Diesel", "", "Temp", "Density"];
     var hr = "<row r=\"2\">";
     headers.forEach(function (h, hi) { hr += h ? strCell(cols[hi] + "2", 2, h) : emptyCell(cols[hi] + "2", 2); });
     sheetRows.push(hr + "</row>");
@@ -1340,7 +1340,7 @@
         (r.company_name ? " • Company: " + r.company_name : "") +
         oneName +
         (r.diesel_temperature != null ? " • " + fmtCsvNum(r.diesel_temperature) + "°C" : "") +
-        (r.diesel_density_g_per_l != null ? " • " + fmtCsvNum(r.diesel_density_g_per_l) + " g/L" : "") +
+        (r.diesel_density_g_per_l != null ? " • " + fmtCsvNum(r.diesel_density_g_per_l) : "") +
         (r._pending ? " • ⏳ Sync pending" : "");
       item.appendChild(top);
       item.appendChild(meta);
@@ -1777,7 +1777,7 @@
       + "@media print{@page{size:landscape;margin:14mm}body{background:#fff}.print-bar{display:none!important}.head{padding:20px 24px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.table-wrap{overflow:visible}table{min-width:0}.table-wrap{box-shadow:none;border-radius:0}thead{display:table-header-group}tfoot{display:table-footer-group}th{-webkit-print-color-adjust:exact;print-color-adjust:exact}tfoot td{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:12px 8px}}"
       + "</style></head><body><div class=\"head\"><h1>Diesel Record Report</h1><p>Diesel record history — filtered records ke sath totals</p></div>"
       + "<div class=\"print-bar\"><button type=\"button\" onclick=\"window.print()\">Print Karein / PDF Save Karein</button></div>"
-      + "<div class=\"table-wrap\"><table><colgroup><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:10%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:10%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:8%\"></colgroup><thead><tr><th>Date</th><th>Time</th><th>Vehicle</th><th>Driver</th><th>Company</th><th>Receiver</th><th class=\"num\">Litres</th><th class=\"num\">KG</th><th>Saved By</th><th>Temp</th><th>Density (g/L)</th></tr></thead>"
+      + "<div class=\"table-wrap\"><table><colgroup><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:10%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:10%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:8%\"></colgroup><thead><tr><th>Date</th><th>Time</th><th>Vehicle</th><th>Driver</th><th>Company</th><th>Receiver</th><th class=\"num\">Litres</th><th class=\"num\">KG</th><th>Saved By</th><th>Temp</th><th>Density</th></tr></thead>"
       + "<tbody>" + trs + "</tbody>"
       + "<tfoot><tr><td colspan=\"7\">TOTAL (" + rows.length + " records)</td><td class=\"num\">" + fmt2(tot.litres) + " L</td><td class=\"num\">" + fmt2(tot.kg) + " KG</td><td></td><td></td></tr></tfoot></table></div>"
       + "</body></html>";
