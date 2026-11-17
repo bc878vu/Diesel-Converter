@@ -20,29 +20,26 @@
     if (x === 0) return "0";
     return String(parseFloat(Number(x).toPrecision(12)));
   }
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-  }
 
   /* ---------- density resolution (Step 1) ---------- */
   // Returns { mode, density, totalKg, warning }.
-  // mode: 'sample' | 'bulk' | 'warning' | 'none'
+  // mode: 'sample' | 'bulk' | 'none' (warning mode khatam 2026-11-02)
   function resolveDensity(prevDensity, litres, kg) {
     if (!isNum(litres) || !isNum(kg) || litres <= 0 || kg <= 0) {
       return { mode: "none", density: prevDensity, totalKg: null, warning: false };
     }
-    // Bulk pattern: many litres + a per-litre-looking weight.
-    if (litres > 10 && kg >= 0.70 && kg <= 1.00) {
+    // Doosri value agar 1 litre ke wazan jaisi lage (0.70–1.00) to wahi
+    // seedhi density hai — chahe sample 5 ho ya 50 ya 5000 (user ki
+    // hidayat 2026-11-02: 5 + 0.82 aur 50 + 0.82 dono par density 0.82
+    // hi aani chahiye). Total = sample litres x density. Warna (bari
+    // value = pooray sample ka wazan) density = wazan / litres.
+    if (kg >= 0.70 && kg <= 1.00) {
       return { mode: "bulk", density: kg, totalKg: litres * kg, warning: false };
     }
+    // Koi range check nahi: choti ya bari, har reading seedhi accept hoti
+    // hai — koi warning kabhi nahi aayegi (user ki hidayat 2026-11-02).
     var d = kg / litres;
-    if (d >= 0.70 && d <= 1.00) {
-      return { mode: "sample", density: d, totalKg: null, warning: false };
-    }
-    // Out of range and not bulk: warn, keep the previous good density.
-    return { mode: "warning", density: prevDensity, totalKg: null, warning: true };
+    return { mode: "sample", density: d, totalKg: null, warning: false };
   }
   function litresToKg(litres, density) { return litres * density; }
   function kgToLitres(kg, density) { return kg / density; }
@@ -78,10 +75,11 @@
       }
       if (ch === "π") { tokens.push({ type: "ident", value: "pi" }); i += 1; continue; }
       if (ch === "√") { tokens.push({ type: "ident", value: "sqrt" }); i += 1; continue; }
-      if (ch === "+" || ch === "-" || ch === "*" || ch === "×" ||
+      if (ch === "+" || ch === "-" || ch === "−" || ch === "*" || ch === "×" ||
           ch === "/" || ch === "÷" || ch === "^" || ch === "%" ||
           ch === "!" || ch === "(" || ch === ")" || ch === "²") {
         var op = ch;
+        if (op === "−") op = "-"; // v17: calculator ka − button + keyboard minus (U+2212) ASCII minus hai
         if (op === "×") op = "*";
         if (op === "÷") op = "/";
         tokens.push({ type: "op", value: op });
@@ -334,22 +332,238 @@
     return { litres: litres, kg: kg, count: records.length };
   }
   function csvCell(v) {
+    // Excel splits .csv on commas, so quote any value holding a comma,
+    // quote, or newline (standard CSV) instead of flattening it.
     var s = v === null || v === undefined ? "" : String(v);
-    if (s.indexOf(",") !== -1 || s.indexOf('"') !== -1 || s.indexOf("\n") !== -1) {
+    if (s.indexOf(",") !== -1 || s.indexOf('"') !== -1 || s.indexOf("\r") !== -1 || s.indexOf("\n") !== -1) {
       return '"' + s.replace(/"/g, '""') + '"';
     }
     return s;
   }
+  function fmtCsvDate(iso) {
+    // "2026-10-31" -> "10/31/2026" (template format, no zero padding)
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+    if (!m) return iso || "";
+    return Number(m[2]) + "/" + Number(m[3]) + "/" + m[1];
+  }
+  function fmtCsvTime(t) {
+    // "07:00:00" -> "7:00:00" (template format, hour without leading zero)
+    var parts = String(t || "").split(":");
+    if (parts.length < 2) return t || "";
+    return Number(parts[0]) + ":" + parts[1] + (parts[2] !== undefined ? ":" + parts[2] : "");
+  }
+  function fmtCsvNum(n) {
+    // Template shows whole numbers without decimals (5000, not 5000.00)
+    return String(Math.round((parseFloat(n) || 0) * 100) / 100);
+  }
   function buildCSV(rows) {
-    var lines = ["Date,Time,Vehicle,Driver,Company,Receiver,Litres,KG,Saved By"];
+    // Layout matches the user's sample file exactly: 9 columns, CRLF endings,
+    // no BOM, title row, two-row Diesel header, 4 blank rows, then the Total
+    // row. Delimiter is a comma (not a tab) because Excel splits .csv on
+    // commas — a tab file collapses into one column on double-click.
+    // rows is the filtered+searched set, so every filter and the search
+    // apply to the download as well.
+    var T = ",";
+    var lines = [
+      ["Incoming Diesel Stock", "", "", "", "", "", "", "", ""].join(T),
+      ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver", "Saved By", "Diesel", ""].join(T),
+      ["", "", "", "", "", "", "", "Litres", "KG"].join(T)
+    ];
     rows.forEach(function (r) {
       lines.push([
-        r.record_date, r.record_time, r.vehicle_number, r.driver_name,
-        r.company_name, r.receiver_name, r.diesel_litres, r.diesel_kg,
-        r.saved_by_name
-      ].map(csvCell).join(","));
+        fmtCsvDate(r.record_date), fmtCsvTime(r.record_time),
+        r.vehicle_number, r.driver_name, r.company_name,
+        r.receiver_name || r.saved_by_name, r.saved_by_name,
+        fmtCsvNum(r.diesel_litres), fmtCsvNum(r.diesel_kg)
+      ].map(csvCell).join(T));
     });
-    return "\ufeff" + lines.join("\n") + "\n";
+    var blank = ["", "", "", "", "", "", "", "", ""].join(T);
+    lines.push(blank, blank, blank, blank);
+    var tot = sumTotals(rows);
+    lines.push([
+      "Total", "", "", "", "", "", "",
+      fmtCsvNum(tot.litres), fmtCsvNum(tot.kg)
+    ].join(T));
+    return lines.join("\r\n") + "\r\n";
+  }
+
+  function escXml(v) {
+    return String(v === null || v === undefined ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  var XLSX_CRC_TABLE = (function () {
+    var t = [], c, n, k;
+    for (n = 0; n < 256; n++) {
+      c = n;
+      for (k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function xlsxCrc32(bytes) {
+    var crc = 0xFFFFFFFF, i;
+    for (i = 0; i < bytes.length; i++) crc = XLSX_CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  function xlsxZip(files) {
+    // Minimal ZIP writer with STORED (uncompressed) entries — Excel reads
+    // stored entries fine, and this avoids shipping a DEFLATE compressor.
+    var enc = new TextEncoder();
+    var parts = [], central = [], offset = 0;
+    function u16(v) { var b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, v, true); return b; }
+    function u32(v) { var b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, v >>> 0, true); return b; }
+    files.forEach(function (f) {
+      var data = enc.encode(f.data);
+      var name = enc.encode(f.name);
+      var crc = xlsxCrc32(data);
+      [u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0)].forEach(function (x) { parts.push(x); });
+      parts.push(name, data);
+      [u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(0), u16(0x21), u32(crc), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset)].forEach(function (x) { central.push(x); });
+      central.push(name);
+      offset += 30 + name.length + data.length;
+    });
+    var cdSize = 0;
+    central.forEach(function (x) { cdSize += x.length; });
+    var end = [u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cdSize), u32(offset), u16(0)];
+    return new Blob(parts.concat(central).concat(end), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+  function buildReportXlsx(rows) {
+    // The user's design as a real .xlsx: merged title, Diesel group header,
+    // borders, fills, column widths, centred text, and a SUM formula for the
+    // Total row — things a .csv can never carry.
+    // v17: 11 columns — Temperature (°C) + Density (g/L) aakhir mein, taake
+    // pehle wale 9 columns ki jagah/design waisa hi rahe. Temp/Density ka
+    // koi total nahi hota (average ka matlab nahi), is liye Total row mein
+    // un ke cells khaali rehte hain.
+    var widths = [14, 11, 14, 14, 20, 18, 18, 12, 12, 12, 13];
+    var cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+    var n = rows.length;
+    var totalRow = 8 + n;
+    function strCell(ref, style, v) { return "<c r=\"" + ref + "\" s=\"" + style + "\" t=\"inlineStr\"><is><t xml:space=\"preserve\">" + escXml(v) + "</t></is></c>"; }
+    function numCell(ref, style, v) { return "<c r=\"" + ref + "\" s=\"" + style + "\"><v>" + v + "</v></c>"; }
+    function formulaCell(ref, style, formula, cached) { return "<c r=\"" + ref + "\" s=\"" + style + "\"><f>" + formula + "</f><v>" + cached + "</v></c>"; }
+    function emptyCell(ref, style) { return "<c r=\"" + ref + "\" s=\"" + style + "\"/>"; }
+    var sheetRows = [], i, j;
+    var titleRow = "<row r=\"1\" ht=\"30\" customHeight=\"1\">" + strCell("A1", 1, "Incoming Diesel Stock");
+    for (i = 1; i < 11; i++) titleRow += emptyCell(cols[i] + "1", 1);
+    sheetRows.push(titleRow + "</row>");
+    var headers = ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver", "Saved By", "Diesel", "", "Temp", "Density (g/L)"];
+    var hr = "<row r=\"2\">";
+    headers.forEach(function (h, hi) { hr += h ? strCell(cols[hi] + "2", 2, h) : emptyCell(cols[hi] + "2", 2); });
+    sheetRows.push(hr + "</row>");
+    var sr = "<row r=\"3\">";
+    for (i = 0; i < 7; i++) sr += emptyCell(cols[i] + "3", 6);
+    sheetRows.push(sr + strCell("H3", 2, "Litres") + strCell("I3", 2, "KG") + emptyCell("J3", 6) + emptyCell("K3", 6) + "</row>");
+    rows.forEach(function (r, idx) {
+      var rr = 4 + idx;
+      sheetRows.push("<row r=\"" + rr + "\">" +
+        strCell("A" + rr, 3, fmtCsvDate(r.record_date)) +
+        strCell("B" + rr, 3, fmtCsvTime(r.record_time)) +
+        strCell("C" + rr, 3, r.vehicle_number || "") +
+        strCell("D" + rr, 3, r.driver_name || "") +
+        strCell("E" + rr, 3, r.company_name || "") +
+        strCell("F" + rr, 3, r.receiver_name || r.saved_by_name || "") +
+        strCell("G" + rr, 3, r.saved_by_name || "") +
+        numCell("H" + rr, 3, fmtCsvNum(r.diesel_litres)) +
+        numCell("I" + rr, 3, fmtCsvNum(r.diesel_kg)) +
+        strCell("J" + rr, 3, r.diesel_temperature == null ? "" : fmtCsvNum(r.diesel_temperature) + "°C") +
+        strCell("K" + rr, 3, r.diesel_density_g_per_l == null ? "" : fmtCsvNum(r.diesel_density_g_per_l)) + "</row>");
+    });
+    for (i = 0; i < 4; i++) {
+      var br = 4 + n + i, brow = "<row r=\"" + br + "\">";
+      for (j = 0; j < 11; j++) brow += emptyCell(cols[j] + br, 6);
+      sheetRows.push(brow + "</row>");
+    }
+    var tot = sumTotals(rows);
+    var tr = "<row r=\"" + totalRow + "\">" + strCell("A" + totalRow, 4, "Total");
+    for (i = 1; i < 7; i++) tr += emptyCell(cols[i] + totalRow, 4);
+    tr += formulaCell("H" + totalRow, 5, "SUM(H4:H" + (totalRow - 1) + ")", fmtCsvNum(tot.litres));
+    tr += formulaCell("I" + totalRow, 5, "SUM(I4:I" + (totalRow - 1) + ")", fmtCsvNum(tot.kg));
+    tr += emptyCell("J" + totalRow, 4) + emptyCell("K" + totalRow, 4);
+    sheetRows.push(tr + "</row>");
+    var colsXml = "<cols>";
+    widths.forEach(function (w, wi) { colsXml += "<col min=\"" + (wi + 1) + "\" max=\"" + (wi + 1) + "\" width=\"" + w + "\" customWidth=\"1\"/>"; });
+    colsXml += "</cols>";
+    var sheetXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+      + "<dimension ref=\"A1:K" + totalRow + "\"/>"
+      + "<sheetViews><sheetView showGridLines=\"1\" workbookViewId=\"0\"/></sheetViews>"
+      + "<sheetFormatPr defaultRowHeight=\"15\"/>"
+      + colsXml
+      + "<sheetData>" + sheetRows.join("") + "</sheetData>"
+      + "<mergeCells count=\"3\"><mergeCell ref=\"A1:K1\"/><mergeCell ref=\"H2:I2\"/><mergeCell ref=\"A" + totalRow + ":G" + totalRow + "\"/></mergeCells>"
+      + "</worksheet>";
+    var stylesXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+      + "<fonts count=\"4\">"
+      + "<font><sz val=\"11\"/><color theme=\"1\"/><name val=\"Calibri\"/><family val=\"2\"/></font>"
+      + "<font><b/><sz val=\"16\"/><color theme=\"1\"/><name val=\"Calibri\"/><family val=\"2\"/></font>"
+      + "<font><b/><sz val=\"12\"/><color theme=\"1\"/><name val=\"Calibri\"/><family val=\"2\"/></font>"
+      + "<font><sz val=\"12\"/><color theme=\"1\"/><name val=\"Calibri\"/><family val=\"2\"/></font>"
+      + "</fonts>"
+      + "<fills count=\"3\">"
+      + "<fill><patternFill patternType=\"none\"/></fill>"
+      + "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFCE4D6\"/><bgColor indexed=\"64\"/></patternFill></fill>"
+      + "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDDEBF7\"/><bgColor indexed=\"64\"/></patternFill></fill>"
+      + "</fills>"
+      + "<borders count=\"2\">"
+      + "<border><left/><right/><top/><bottom/><diagonal/></border>"
+      + "<border><left style=\"thin\"/><right style=\"thin\"/><top style=\"thin\"/><bottom style=\"thin\"/><diagonal/></border>"
+      + "</borders>"
+      + "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>"
+      + "<cellXfs count=\"7\">"
+      + "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>"
+      + "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"1\" borderId=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
+      + "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"0\" borderId=\"1\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
+      + "<xf numFmtId=\"0\" fontId=\"3\" fillId=\"0\" borderId=\"1\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
+      + "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"2\" borderId=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
+      + "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"2\" borderId=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
+      + "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" applyBorder=\"1\"/>"
+      + "</cellXfs>"
+      + "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>"
+      + "</styleSheet>";
+    var workbookXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+      + "<sheets><sheet name=\"Diesel Records\" sheetId=\"1\" r:id=\"rId1\"/></sheets>"
+      + "</workbook>";
+    var workbookRels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+      + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
+      + "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>"
+      + "</Relationships>";
+    var rootRels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+      + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
+      + "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>"
+      + "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>"
+      + "</Relationships>";
+    var contentTypes = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+      + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+      + "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+      + "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+      + "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+      + "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>"
+      + "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>"
+      + "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>"
+      + "</Types>";
+    var coreXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
+      + "<dc:title>Incoming Diesel Stock</dc:title><dc:creator>Diesel Converter</dc:creator>"
+      + "</cp:coreProperties>";
+    var appXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+      + "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">"
+      + "<Application>Diesel Converter</Application>"
+      + "</Properties>";
+    return xlsxZip([
+      { name: "[Content_Types].xml", data: contentTypes },
+      { name: "_rels/.rels", data: rootRels },
+      { name: "xl/workbook.xml", data: workbookXml },
+      { name: "xl/_rels/workbook.xml.rels", data: workbookRels },
+      { name: "xl/worksheets/sheet1.xml", data: sheetXml },
+      { name: "xl/styles.xml", data: stylesXml },
+      { name: "docProps/core.xml", data: coreXml },
+      { name: "docProps/app.xml", data: appXml }
+    ]);
   }
 
   /* ---------- node test exports ---------- */
@@ -389,7 +603,6 @@
   var sampleLitresEl = $("sampleLitres");
   var sampleKgEl = $("sampleKg");
   var directEl = $("directDensity");
-  var warningEl = $("densityWarning");
   var bulkBoxEl = $("bulkBox");
   var bulkKgEl = $("bulkKg");
   var bulkFormulaEl = $("bulkFormula");
@@ -445,20 +658,14 @@
     var litres = toNum(sampleLitresEl.value);
     var kg = toNum(sampleKgEl.value);
     var res = resolveDensity(density, litres, kg);
-    if (res.mode === "warning") {
-      warningEl.hidden = false;
-      bulkBoxEl.hidden = true;
+    density = res.density;
+    if (res.mode === "bulk") {
+      bulkBoxEl.hidden = false;
+      bulkKgEl.textContent = fmt2(res.totalKg);
+      bulkFormulaEl.textContent = fmtDensity(litres) + " L × " +
+        density.toFixed(3) + " = " + fmt2(res.totalKg) + " kg";
     } else {
-      warningEl.hidden = true;
-      density = res.density;
-      if (res.mode === "bulk") {
-        bulkBoxEl.hidden = false;
-        bulkKgEl.textContent = fmt2(res.totalKg);
-        bulkFormulaEl.textContent = fmtDensity(litres) + " L × " +
-          density.toFixed(3) + " = " + fmt2(res.totalKg) + " kg";
-      } else {
-        bulkBoxEl.hidden = true;
-      }
+      bulkBoxEl.hidden = true;
     }
     syncDensityDisplays();
     renderConverters();
@@ -470,7 +677,6 @@
     density = d;
     sampleLitresEl.value = "1";
     sampleKgEl.value = fmtDensity(d);
-    warningEl.hidden = true;
     bulkBoxEl.hidden = true;
     syncDensityDisplays();
     renderConverters();
@@ -646,7 +852,7 @@
     calcPress(btn.getAttribute("data-key"));
   });
   function openCalc() { calcOverlay.hidden = false; calcRender(); }
-  function closeCalc() { calcOverlay.hidden = true; }
+  function closeCalc() { calcOverlay.hidden = true; maybeAutoReload(); }
   $("openCalc").addEventListener("click", openCalc);
   $("closeCalc").addEventListener("click", closeCalc);
   calcOverlay.addEventListener("click", function (ev) {
@@ -688,6 +894,192 @@
   var recSelectedWeek = "";
   var recSelectedYear = "";
   var editingRecordId = null;
+
+  /* ----- offline: cache + outbox (v16) -----
+     Records cache: aakhri server list localStorage me (visitor ke liye
+     bhi) — offline kholne par wahi list + totals + filters dikhte hain.
+     Outbox: offline (ya failed) save/update/delete yahan queue hote hain
+     aur internet aate hi IN ORDER sync hote hain. Har create ki apni
+     client-UUID hoti hai — retry par bhi wahi id jati hai, is liye
+     dobara save se duplicate kabhi nahi banega. Koi op kabhi chup-chaap
+     drop nahi hota: 5xx/network par 30s backoff, 4xx par 5 min backoff
+     + saaf wajah; 409 (pehle se save ho chuka) ko kamyabi mana jata hai. */
+  var REC_CACHE_KEY = "diesel_records_cache_v1";
+  var REC_OUTBOX_KEY = "diesel_outbox_v1";
+  function storeJSON(key, val) {
+    try { window.localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* storage optional */ }
+  }
+  function readJSON(key) {
+    try {
+      var raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function newClientId() {
+    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    var h = function () { return Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1); };
+    return h() + h() + "-" + h() + "-4" + h().slice(1) + "-" + h() + "-" + h() + h() + h();
+  }
+  var recOutbox = readJSON(REC_OUTBOX_KEY) || [];
+  var serverRecords = []; // aakhri server list (cache ya fetch se)
+  var outboxBusy = false;
+  function saveOutbox() { storeJSON(REC_OUTBOX_KEY, recOutbox); updateOfflineBadge(); }
+  function saveRecCache() { storeJSON(REC_CACHE_KEY, { savedAt: Date.now(), rows: serverRecords }); }
+  function loadRecCache() {
+    var c = readJSON(REC_CACHE_KEY);
+    return (c && c.rows) ? c.rows : null;
+  }
+  function updateOfflineBadge() {
+    var el = $("offlineBadge");
+    if (!el) return;
+    var n = recOutbox.length;
+    if (!navigator.onLine) {
+      el.hidden = false;
+      el.textContent = n ? ("Offline • Sync pending (" + n + ")")
+        : "Offline — internet nahi hai";
+    } else if (n) {
+      el.hidden = false;
+      el.textContent = "Sync pending (" + n + ")";
+    } else {
+      el.hidden = true;
+      el.textContent = "";
+    }
+  }
+  function applyOutboxToList() {
+    // allRecords = server list + queued ops ka overlay. Pending create
+    // upar, pending edit values overwrite, pending delete row hata deta
+    // hai. Server se fetch ke baad bhi yehi overlay dobara lagta hai, is
+    // liye queued record refetch se ghayab nahi hota.
+    var base = serverRecords.slice();
+    recOutbox.forEach(function (op) {
+      var i, found = -1;
+      for (i = 0; i < base.length; i += 1) {
+        if (String(base[i].id) === String(op.id)) { found = i; break; }
+      }
+      if (op.kind === "create") {
+        if (found === -1) {
+          var row = Object.assign({}, op.row, { _pending: true });
+          base.unshift(row);
+        }
+      } else if (op.kind === "update") {
+        if (found !== -1) {
+          base[found] = Object.assign({}, base[found], op.row, { _pending: true });
+        }
+      } else if (op.kind === "delete") {
+        if (found !== -1) base.splice(found, 1);
+      }
+    });
+    allRecords = base;
+  }
+  function queueOp(op) {
+    // Coalesce: ek hi record par pehle se queued op ho to merge karein.
+    var existing = null;
+    recOutbox.forEach(function (o) { if (String(o.id) === String(op.id)) existing = o; });
+    if (existing) {
+      if (op.kind === "delete" && existing.kind === "create") {
+        // Server par gaya hi nahi tha — create op hi hata dein.
+        recOutbox = recOutbox.filter(function (o) { return o !== existing; });
+        saveOutbox();
+        return "dropped";
+      }
+      if (op.kind === "update" && (existing.kind === "create" || existing.kind === "update")) {
+        // Field-wise merge (replace nahi): form row me owner_id jaisi
+        // cheezein nahi hotin — poora replace karne se woh kho jatin
+        // aur pending row apni Edit/Delete kho deta.
+        existing.row = Object.assign({}, existing.row, op.row, { id: existing.id });
+        existing.at = op.at || new Date().toISOString();
+        existing.nextRetry = 0;
+        saveOutbox();
+        return "merged";
+      }
+      if (op.kind === "delete" && existing.kind === "update") {
+        recOutbox = recOutbox.filter(function (o) { return o !== existing; });
+      }
+    }
+    op.at = op.at || new Date().toISOString();
+    op.nextRetry = 0;
+    op.lastError = null;
+    recOutbox.push(op);
+    saveOutbox();
+    return "queued";
+  }
+  function trySendOp(op) {
+    // Ek op server ko bhejne ki koshish. Resolve: {failed:false} ya
+    // {failed:true, status} — status 0 = network failure, 409 (create
+    // pehle se maujood) = kamyabi. Offline ho to koi network call nahi.
+    if (!navigator.onLine) return Promise.resolve({ failed: true, status: 0 });
+    var req;
+    if (op.kind === "create") {
+      req = recApi("/diesel_records", {
+        method: "POST",
+        body: JSON.stringify(op.row),
+        prefer: "return=representation",
+        authToken: authSession.access_token
+      });
+    } else if (op.kind === "update") {
+      req = recApi("/diesel_records?id=eq." + encodeURIComponent(op.id), {
+        method: "PATCH",
+        body: JSON.stringify(op.row),
+        prefer: "return=representation",
+        authToken: authSession.access_token
+      });
+    } else {
+      req = recApi("/diesel_records?id=eq." + encodeURIComponent(op.id), {
+        method: "DELETE",
+        authToken: authSession.access_token
+      });
+    }
+    return req.then(function (res) {
+      if (res.ok) return { failed: false };
+      if (res.status === 409 && op.kind === "create") return { failed: false };
+      return { failed: true, status: res.status };
+    }).catch(function () { return { failed: true, status: 0 }; });
+  }
+  function flushOutbox(force) {
+    // Outbox IN ORDER sync karein. Pehli failure par ruk jayein (order
+    // barkarar) — failed op queued rehta hai, backoff ke sath. Kabhi
+    // reject nahi karta, taake caller chain (sync/load) chalta rahe.
+    // force=true (online aana / sheet khulna) backoff nazar-andaz karke
+    // fori try karta hai — ye asli state change hai; 3s cycle (force
+    // nahi) backoff ka ehtram karta hai taake failing server ko na kootay.
+    if (!recConfigured || !authSession || !authSession.access_token) return Promise.resolve(false);
+    if (!navigator.onLine || outboxBusy || !recOutbox.length) return Promise.resolve(false);
+    var now = Date.now();
+    var earliest = Infinity;
+    recOutbox.forEach(function (op) { if ((op.nextRetry || 0) < earliest) earliest = op.nextRetry || 0; });
+    if (!force && now < earliest) return Promise.resolve(false);
+    outboxBusy = true;
+    var done = 0;
+    function step() {
+      if (!recOutbox.length) return Promise.resolve(done);
+      var op = recOutbox[0];
+      if (!force && Date.now() < (op.nextRetry || 0)) return Promise.resolve(done);
+      return trySendOp(op).then(function (r) {
+        if (!r.failed) {
+          recOutbox.shift();
+          done += 1;
+          saveOutbox();
+          return step();
+        }
+        if (r.status && r.status >= 400 && r.status < 500) {
+          op.lastError = "HTTP " + r.status;
+          op.nextRetry = Date.now() + 5 * 60 * 1000;
+          recMsg("Database ne record reject kiya (HTTP " + r.status + ") — record queue mein mehfooz hai, admin se SQL check karwayein.", false);
+        } else {
+          op.lastError = r.status ? ("HTTP " + r.status) : "network";
+          op.nextRetry = Date.now() + 30000;
+          recMsg("Sync ruk gaya — internet aate hi dobara hoga.", false);
+        }
+        saveOutbox();
+        return done;
+      });
+    }
+    return step().then(function (n) {
+      outboxBusy = false;
+      updateOfflineBadge();
+      return n > 0;
+    });
+  }
 
   function recApi(path, options) {
     var cfg = window.DIESEL_CONFIG;
@@ -765,20 +1157,25 @@
     el.className = "form-msg" + (ok ? " ok" : text ? " err" : "");
   }
   function renderAuth() {
+    // Logged-in state shows ONLY the header chip + logout icon (no big box).
+    // The auth box appears only when it has content: the login form when
+    // logged out, or the one-time real-name setup when the name is missing.
     var loggedIn = !!authSession;
     $("authLoggedOut").hidden = loggedIn;
-    $("authLoggedIn").hidden = !loggedIn;
-    if (loggedIn) {
-      $("authUserName").textContent = authName();
-      $("authUserEmail").textContent = authSession.user.email || "";
-      $("authNameSetup").hidden = authHasRealName();
-    } else {
+    $("authNameSetup").hidden = !loggedIn || authHasRealName();
+    $("authBox").hidden = loggedIn && authHasRealName();
+    $("recUserChip").textContent = loggedIn ? authName() : "";
+    $("recUserChip").hidden = !loggedIn;
+    $("authLogoutBtn").hidden = !loggedIn;
+    if (!loggedIn) {
       cancelEdit();
     }
-    $("recBy").value = loggedIn ? authName() : "";
     $("recSaveBtn").disabled = !recConfigured || !loggedIn;
   }
   function authValidate() {
+    // Session check: EXPIRED token (401/403 + refresh fail) par hi logout;
+    // network failure ya transient server error par session BARKARAR
+    // rehta hai — offline user cache + outbox se kaam karta rahega.
     if (!authSession || !authSession.access_token) { renderAuth(); return; }
     var cfg = window.DIESEL_CONFIG;
     fetch(cfg.SUPABASE_URL + "/auth/v1/user", {
@@ -787,25 +1184,32 @@
         Authorization: "Bearer " + authSession.access_token
       }
     }).then(function (res) {
-      if (res.ok) return res.json();
-      if (authSession.refresh_token) {
+      if (res.ok) {
+        return res.json().then(function (user) { return { user: user }; });
+      }
+      if (res.status === 401 || res.status === 403) {
+        if (!authSession.refresh_token) throw { expired: true };
         return authCall("/token?grant_type=refresh_token",
           { refresh_token: authSession.refresh_token })
           .then(function (r) {
-            if (!r.ok) throw new Error("refresh failed");
+            if (!r.ok) throw { expired: true };
             return r.json();
           })
-          .then(function (s) { authSaveSession(s); return s.user; });
+          .then(function (s) { authSaveSession(s); return { user: s.user }; });
       }
-      throw new Error("session expired");
-    }).then(function (user) {
-      if (user && authSession) {
-        authSession.user = user;
+      throw { transient: true };
+    }).then(function (out) {
+      if (out && out.user && authSession) {
+        authSession.user = out.user;
         authSaveSession(authSession);
       }
       renderAuth();
-    }).catch(function () {
-      authSaveSession(null);
+    }).catch(function (err) {
+      if (err && err.expired) {
+        authSaveSession(null);
+        authMsg("Session khatam ho gaya — dobara login karein.", false);
+      }
+      // Network failure / transient error: session barkarar.
       renderAuth();
     });
   }
@@ -917,12 +1321,19 @@
       var meta = document.createElement("div");
       meta.className = "rec-meta";
       var byName = displaySavedBy(r);
+      // Sirf EK naam: Receiver aur By hamesha ek hi shakhs hota hai
+      // (receiver login wale ka real naam hai), is liye dono dikhane se
+      // naam double lagta tha. Receiver ho to wohi, warna By.
+      var oneName = r.receiver_name ? (" • Receiver: " + r.receiver_name)
+        : (byName ? " • By: " + byName : "");
       meta.textContent = (r.record_date || "") +
         (r.record_time ? " " + String(r.record_time).slice(0, 5) : "") +
         " • Driver: " + (r.driver_name || "") +
         (r.company_name ? " • Company: " + r.company_name : "") +
-        (r.receiver_name ? " • Receiver: " + r.receiver_name : "") +
-        (byName ? " • By: " + byName : "");
+        oneName +
+        (r.diesel_temperature != null ? " • " + fmtCsvNum(r.diesel_temperature) + "°C" : "") +
+        (r.diesel_density_g_per_l != null ? " • " + fmtCsvNum(r.diesel_density_g_per_l) + " g/L" : "") +
+        (r._pending ? " • ⏳ Sync pending" : "");
       item.appendChild(top);
       item.appendChild(meta);
       // Edit/Delete sirf apne record par — doosre user ka record par
@@ -960,6 +1371,8 @@
     $("recTime").value = r.record_time ? String(r.record_time).slice(0, 5) : "";
     $("recLitres").value = r.diesel_litres != null ? r.diesel_litres : "";
     $("recKg").value = r.diesel_kg != null ? r.diesel_kg : "";
+    $("recTemp").value = r.diesel_temperature != null ? r.diesel_temperature : "";
+    $("recDensity").value = r.diesel_density_g_per_l != null ? r.diesel_density_g_per_l : "";
     $("recSaveBtn").textContent = "Record Update Karein";
     $("recCancelEditBtn").hidden = false;
     recMsg("Edit mode: apna record update karein, phir Record Update Karein dabayein.", true);
@@ -971,16 +1384,31 @@
       return;
     }
     if (!window.confirm("Ye record pakka delete karna hai?")) return;
-    recApi("/diesel_records?id=eq." + encodeURIComponent(r.id), {
-      method: "DELETE",
-      authToken: authSession.access_token
-    }).then(function (res) {
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      recMsg("Record delete ho gaya.", true);
+    var op = { kind: "delete", id: r.id };
+    trySendOp(op).then(function (res) {
+      if (!res.failed) {
+        recMsg("Record delete ho gaya.", true);
+        if (editingRecordId === r.id) cancelEdit();
+        loadRecords();
+        return;
+      }
+      var q = queueOp(op);
+      if (q === "dropped") {
+        // Pending create hi tha — server par gaya hi nahi tha.
+        applyOutboxToList();
+        renderPickers();
+        renderRecList();
+        recMsg("Record delete ho gaya (offline — abhi server par save hi nahi hua tha).", true);
+        if (editingRecordId === r.id) cancelEdit();
+        return;
+      }
+      applyOutboxToList();
+      renderPickers();
+      renderRecList();
       if (editingRecordId === r.id) cancelEdit();
-      loadRecords();
-    }).catch(function () {
-      recMsg("Record delete nahi hua — sirf apna record delete ho sakta hai. Agar ye aapka record hai to admin se SQL v4 (edit/delete permission) run karwayein.", false);
+      recMsg(!navigator.onLine || res.status === 0
+        ? "Internet nahi hai — record delete queue mein hai, internet aate hi sync hoga."
+        : "Record delete queue mein hai — internet/database theek hote hi sync hoga.", false);
     });
   }
   $("recCancelEditBtn").addEventListener("click", function () {
@@ -990,25 +1418,104 @@
     $("recCompany").value = "";
     $("recLitres").value = "";
     $("recKg").value = "";
+    $("recTemp").value = "";
+    $("recDensity").value = "";
     recMsg("", true);
   });
-  function loadRecords() {
-    if (!recConfigured) { renderRecList(); return; }
-    recApi("/diesel_records?select=*&order=record_date.desc,created_at.desc&limit=1000")
+  function fetchRecordsRows() {
+    return recApi("/diesel_records?select=*&order=record_date.desc,created_at.desc&limit=1000")
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
-      })
+      });
+  }
+  function loadRecords() {
+    if (!recConfigured) { renderRecList(); return; }
+    fetchRecordsRows()
       .then(function (rows) {
-        allRecords = rows || [];
+        serverRecords = rows || [];
+        saveRecCache();
+        applyOutboxToList();
         renderPickers();
         renderRecList();
       })
       .catch(function () {
-        recMsg("Records load nahi hue — database/table check karein.", false);
-        renderRecList();
+        if (!navigator.onLine) {
+          // Offline: aakhri saved list cache se dikhayein (visitor ko bhi).
+          if (!serverRecords.length) {
+            var cached = loadRecCache();
+            if (cached) serverRecords = cached;
+          }
+          applyOutboxToList();
+          renderPickers();
+          renderRecList();
+          recMsg(serverRecords.length
+            ? "Internet nahi hai — aakhri saved records dikhaye ja rahe hain."
+            : "Internet nahi hai — records dekhne ke liye online hona zaroori hai.", false);
+        } else {
+          recMsg("Records load nahi hue — database/table check karein.", false);
+          renderRecList();
+        }
+        updateOfflineBadge();
       });
   }
+  // Auto-sync: sheet khuli ho to list khud-ba-khud update hogi,
+  // refresh dabane ki zaroorat nahi. Har 3 second me database se
+  // chup-chaap check hota hai; dobara render SIRF tab jab data badla
+  // ho (na filter badalta hai, na search, na khula hua form).
+  // Ownership ID se pehchani jati hai (owner_id = login wali ID),
+  // is liye jis marzi device se usi ID se login ho, us ke apne
+  // records par Edit/Delete khud aa jayenge.
+  var recSyncTimer = null;
+  function recordsSignature(rows) {
+    return (rows || []).map(function (r) {
+      return [r.id, r.record_date, r.record_time, r.vehicle_number,
+        r.driver_name, r.company_name, r.receiver_name, r.saved_by_name,
+        r.diesel_litres, r.diesel_kg, r.diesel_temperature,
+        r.diesel_density_g_per_l, r.owner_id].join("|");
+    }).join("\n");
+  }
+  var recSyncBusy = false;
+  function syncRecords() {
+    if (!recConfigured || recOverlay.hidden || recSyncBusy) return;
+    recSyncBusy = true;
+    // Pehle outbox flush (internet aate hi queued ops sync hon), phir
+    // server se taaza list — signature ka mawazna SIRF server list se,
+    // warna pending overlay har cycle me dobara render karwayega.
+    flushOutbox()
+      .then(function () { return fetchRecordsRows(); })
+      .then(function (rows) {
+        rows = rows || [];
+        if (recordsSignature(rows) !== recordsSignature(serverRecords)) {
+          serverRecords = rows;
+          saveRecCache();
+          applyOutboxToList();
+          renderPickers();
+          renderRecList();
+        }
+      })
+      .catch(function () { /* khamoshi: agla cycle phir try karega */ })
+      .then(function () { recSyncBusy = false; });
+  }
+  function startRecordSync() {
+    stopRecordSync();
+    recSyncTimer = setInterval(syncRecords, 3000);
+  }
+  function stopRecordSync() {
+    if (recSyncTimer) { clearInterval(recSyncTimer); recSyncTimer = null; }
+  }
+  // Tab par wapas aate hi fori check (doosri device/tab se login ya
+  // record ke baad bhi refresh ki zaroorat nahi).
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) syncRecords();
+  });
+  window.addEventListener("focus", function () { syncRecords(); });
+  window.addEventListener("online", function () {
+    updateOfflineBadge();
+    flushOutbox(true);
+    syncRecords();
+  });
+  window.addEventListener("offline", function () { updateOfflineBadge(); });
   function openRecords() {
     recOverlay.hidden = false;
     $("recSetupNote").hidden = recConfigured;
@@ -1023,9 +1530,18 @@
       if (mm.length < 2) mm = "0" + mm;
       $("recTime").value = hh + ":" + mm;
     }
-    loadRecords();
+    // v17: Density field mein converter ki current density (g/L) pehle se
+    // bhari ho — user chahe to badal le; khaali ho to save par null jayega.
+    // Edit mode mein startEdit ki values barkarar (overwrite nahi).
+    if (!editingRecordId && !$("recDensity").value) {
+      $("recDensity").value = String(Math.round(density * 1000));
+    }
+    // Pehle queued ops sync hon, phir taaza list aaye.
+    flushOutbox(true).then(function () { loadRecords(); });
+    startRecordSync();
+    updateOfflineBadge();
   }
-  function closeRecords() { recOverlay.hidden = true; }
+  function closeRecords() { recOverlay.hidden = true; stopRecordSync(); maybeAutoReload(); }
   $("openRecords").addEventListener("click", openRecords);
   $("closeRecords").addEventListener("click", closeRecords);
   recOverlay.addEventListener("click", function (ev) {
@@ -1048,8 +1564,13 @@
         authSaveSession(s);
         authMsg("Login ho gaya.", true);
         renderAuth();
+        loadRecords();
       })
-      .catch(function () { authMsg("Login nahi hua — email/password check karein.", false); });
+      .catch(function () {
+        authMsg(!navigator.onLine
+          ? "Internet nahi hai — login ke liye online hona zaroori hai."
+          : "Login nahi hua — email/password check karein.", false);
+      });
   });
   $("authLogoutBtn").addEventListener("click", function () {
     if (authSession && authSession.access_token) {
@@ -1058,6 +1579,7 @@
     authSaveSession(null);
     authMsg("Logout ho gaya.", true);
     renderAuth();
+    renderRecList();
   });
   $("authSaveNameBtn").addEventListener("click", function () {
     var nameEl = $("authNameMsg");
@@ -1088,7 +1610,9 @@
       renderAuth();
       renderRecList();
     }).catch(function () {
-      nameEl.textContent = "Naam save nahi hua — dobara try karein.";
+      nameEl.textContent = !navigator.onLine
+        ? "Internet nahi hai — naam save karne ke liye online hona zaroori hai."
+        : "Naam save nahi hua — dobara try karein.";
       nameEl.className = "form-msg err";
     });
   });
@@ -1115,9 +1639,19 @@
     var date = $("recDate").value;
     var litres = toNum($("recLitres").value);
     var kg = toNum($("recKg").value);
-    if (!vehicle || !driver || !date || !isNum(litres) || litres <= 0 ||
-        !isNum(kg) || kg <= 0) {
-      recMsg("Vehicle, Driver, Date, Litres aur KG zaroori hain — Litres aur KG dono khud likhein.", false);
+    // v17: Temperature (°C) + Density (g/L) — dono optional; khaali ho to
+    // null save hoga (report mein "—"). Density 0 ya manfi nahi ho sakti.
+    var tempRaw = toNum($("recTemp").value);
+    var densRaw = toNum($("recDensity").value);
+    var tempVal = isNum(tempRaw) ? tempRaw : null;
+    var densVal = (isNum(densRaw) && densRaw > 0) ? densRaw : null;
+    // Litres ya KG me se kam az kam ek: dono ki pabandi khatam. Jo khaali
+    // rahega us me 0 save hoga (koi field empty nahi rahegi) aur koi auto
+    // calculation nahi hogi — doosri value khud likhni hogi.
+    var hasLitres = isNum(litres) && litres > 0;
+    var hasKg = isNum(kg) && kg > 0;
+    if (!vehicle || !driver || !date || (!hasLitres && !hasKg)) {
+      recMsg("Vehicle, Driver, Date zaroori hain, aur Litres ya KG me se kam az kam ek value zaroori hai.", false);
       return;
     }
     // Receiver box khatam: receiver seedha logged-in user ka real naam.
@@ -1128,45 +1662,51 @@
       receiver_name: authName(),
       record_date: date,
       record_time: $("recTime").value || null,
-      diesel_litres: litres,
-      diesel_kg: kg,
+      diesel_litres: hasLitres ? litres : 0,
+      diesel_kg: hasKg ? kg : 0,
+      diesel_temperature: tempVal,
+      diesel_density_g_per_l: densVal,
       saved_by_name: authName()
     };
     $("recSaveBtn").disabled = true;
     var isEdit = !!editingRecordId;
-    var req;
+    var op;
     if (isEdit) {
-      req = recApi("/diesel_records?id=eq." + encodeURIComponent(editingRecordId), {
-        method: "PATCH",
-        body: JSON.stringify(row),
-        prefer: "return=representation",
-        authToken: authSession.access_token
-      });
+      op = { kind: "update", id: editingRecordId, row: row };
     } else {
+      row.id = newClientId();
       row.owner_id = authSession.user ? authSession.user.id : null;
-      req = recApi("/diesel_records", {
-        method: "POST",
-        body: JSON.stringify(row),
-        prefer: "return=representation",
-        authToken: authSession.access_token
-      });
+      op = { kind: "create", id: row.id, row: row };
     }
-    req
-      .then(function (res) {
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        return res.json();
-      })
-      .then(function () {
-        recMsg(isEdit ? "Record update ho gaya." : "Record save ho gaya.", true);
+    trySendOp(op)
+      .then(function (r) {
+        if (!r.failed) {
+          recMsg(isEdit ? "Record update ho gaya." : "Record save ho gaya.", true);
+          cancelEdit();
+          $("recLitres").value = "";
+          $("recKg").value = "";
+          loadRecords();
+          return;
+        }
+        // Bheja nahi gaya (offline ya server error) — queue mein daalein,
+        // record kabhi zaya nahi hoga. Form khaali kar dein (values outbox
+        // mein mehfooz hain) taake agla record likha ja sake.
+        queueOp(op);
+        applyOutboxToList();
+        renderPickers();
+        renderRecList();
         cancelEdit();
         $("recLitres").value = "";
         $("recKg").value = "";
-        loadRecords();
-      })
-      .catch(function () {
-        recMsg(isEdit
-          ? "Record update nahi hua — sirf apna record update ho sakta hai. Agar ye aapka record hai to admin se SQL v4 (edit/delete permission) run karwayein."
-          : "Record save nahi hua — database/table check karein.", false);
+        if (!navigator.onLine || r.status === 0) {
+          recMsg(isEdit
+            ? "Internet nahi hai — record update queue mein hai, internet aate hi sync hoga."
+            : "Internet nahi hai — record save ho gaya (offline), internet aate hi sync hoga.", false);
+        } else if (r.status >= 400 && r.status < 500) {
+          recMsg("Database ne record reject kiya (HTTP " + r.status + ") — record queue mein mehfooz hai, admin se SQL check karwayein.", false);
+        } else {
+          recMsg("Sync ruk gaya — record queue mein mehfooz hai, internet aate hi dobara hoga.", false);
+        }
       })
       .then(function () {
         renderAuth();
@@ -1197,22 +1737,97 @@
     recQuery = $("recSearch").value.trim();
     renderRecList();
   });
-  $("recDownload").addEventListener("click", function () {
-    var csv = buildCSV(recShown);
-    var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  function escHtml(v) {
+    return String(v === null || v === undefined ? "" : v)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  function buildReportHTML(rows) {
+    var tot = sumTotals(rows);
+    var trs = rows.map(function (r) {
+      return "<tr><td class=\"dt\">" + escHtml(r.record_date || "") + "</td><td class=\"dt\">" + escHtml(r.record_time ? String(r.record_time).slice(0, 5) : "") + "</td><td>" + escHtml(r.vehicle_number || "") + "</td><td>" + escHtml(r.driver_name || "") + "</td><td>" + escHtml(r.company_name || "") + "</td><td>" + escHtml(r.receiver_name || "") + "</td><td class=\"num\">" + fmt2(parseFloat(r.diesel_litres) || 0) + "</td><td class=\"num\">" + fmt2(parseFloat(r.diesel_kg) || 0) + "</td><td>" + escHtml(displaySavedBy(r)) + "</td><td>" + (r.diesel_temperature == null ? "—" : fmtCsvNum(r.diesel_temperature) + "°C") + "</td><td>" + (r.diesel_density_g_per_l == null ? "—" : fmtCsvNum(r.diesel_density_g_per_l)) + "</td></tr>";
+    }).join("");
+    if (!trs) trs = "<tr><td colspan=\"11\" class=\"empty\">Koi record nahi mila.</td></tr>";
+    return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Diesel Record Report</title><style>"
+      + "body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;margin:0;background:#f1f5f0;color:#10231a}"
+      + ".head{background:#0b3d20;color:#fff;padding:28px 32px;border-bottom:5px solid #e9ba4e}"
+      + ".head h1{margin:0;font-size:26px;letter-spacing:.2px}.head p{margin:6px 0 0;opacity:.85;font-size:14px}"
+      + ""
+      + "table{width:100%;min-width:900px;border-collapse:collapse;background:#fff;table-layout:fixed}.table-wrap{overflow-x:auto;box-shadow:0 2px 12px rgba(16,35,26,.10);border-radius:12px}@media screen{thead th{position:sticky;top:0;z-index:1}tbody tr:hover td{background:#eef5ee}.print-bar button:hover{background:#14532d}}"
+      + "th{background:#0b3d20;color:#fff;text-align:left;padding:10px 12px;font-size:13px;letter-spacing:.3px}"
+      + "td{padding:10px 12px;border-bottom:1px solid #e2e8e4;font-size:14px;line-height:1.45;vertical-align:top;overflow-wrap:anywhere}tr{break-inside:avoid}tr:nth-child(even) td{background:#f7faf7}"
+      + "td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}"
+      + "td.dt{white-space:nowrap}"
+      + "tfoot td{background:#e9ba4e;color:#10231a;font-weight:800;padding:12px;border-top:2px solid #0b3d20;white-space:nowrap;font-size:13px}"
+      + ".empty{text-align:center;opacity:.7;padding:24px}"
+      + ""
+      + ".print-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 32px;background:#fff;border-bottom:1px solid #d8e2da}.print-bar button{background:#0b3d20;color:#fff;border:1px solid #0b3d20;border-radius:10px;padding:10px 18px;font-weight:700;cursor:pointer}.print-bar button:active{background:#14532d}.print-bar span{font-size:13px;opacity:.75}"
+      + "@media (max-width:600px){.head{padding:20px 16px}.head h1{font-size:22px}.print-bar{padding:12px 16px}th,td{padding:8px}}"
+      + "@media print{@page{size:landscape;margin:14mm}body{background:#fff}.print-bar{display:none!important}.head{padding:20px 24px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.table-wrap{overflow:visible}table{min-width:0}.table-wrap{box-shadow:none;border-radius:0}thead{display:table-header-group}tfoot{display:table-footer-group}th{-webkit-print-color-adjust:exact;print-color-adjust:exact}tfoot td{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:12px 8px}}"
+      + "</style></head><body><div class=\"head\"><h1>Diesel Record Report</h1><p>Diesel record history — filtered records ke sath totals</p></div>"
+      + "<div class=\"print-bar\"><button type=\"button\" onclick=\"window.print()\">Print Karein / PDF Save Karein</button></div>"
+      + "<div class=\"table-wrap\"><table><colgroup><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:10%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:10%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:8%\"></colgroup><thead><tr><th>Date</th><th>Time</th><th>Vehicle</th><th>Driver</th><th>Company</th><th>Receiver</th><th class=\"num\">Litres</th><th class=\"num\">KG</th><th>Saved By</th><th>Temp</th><th>Density (g/L)</th></tr></thead>"
+      + "<tbody>" + trs + "</tbody>"
+      + "<tfoot><tr><td colspan=\"7\">TOTAL (" + rows.length + " records)</td><td class=\"num\">" + fmt2(tot.litres) + " L</td><td class=\"num\">" + fmt2(tot.kg) + " KG</td><td></td><td></td></tr></tfoot></table></div>"
+      + "</body></html>";
+  }
+  $("recReport").addEventListener("click", function () {
+    var html = buildReportHTML(recShown);
+    var blob = new Blob([html], { type: "text/html;charset=utf-8" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "diesel-records.csv";
+    a.download = "diesel-report.html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  });
+  $("recDownload").addEventListener("click", function () {
+    var blob = buildReportXlsx(recShown);
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "diesel-records.xlsx";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   });
 
-  /* ----- service worker ----- */
+  /* ----- service worker auto-update: naya version khud lagao ----- */
+  /* Koi cache clear / reload nahi: naya SW milte hi page khud refresh ho
+     jata hai. Sirf ek ehtiyat: agar Record ya Calculator sheet khuli ho
+     (aadha likha record na khoye) to refresh sheet band hote hi hota hai.
+     Pehli install par reload nahi hota (swHadController guard). */
+  var swHadController = false;
+  var swReloaded = false;
+  var swUpdatePending = false;
+  function swOverlayOpen() {
+    return !recOverlay.hidden || !calcOverlay.hidden;
+  }
+  function maybeAutoReload() {
+    if (swReloaded) return;
+    if (swOverlayOpen()) { swUpdatePending = true; return; }
+    swReloaded = true;
+    swUpdatePending = false;
+    location.reload();
+  }
   if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) {
+    swHadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.register("./sw.js", { scope: "./" })
+      .then(function (reg) {
+        function checkUpdate() {
+          if (reg && reg.update) reg.update().catch(function () {});
+          if (swUpdatePending) maybeAutoReload();
+        }
+        checkUpdate();
+        document.addEventListener("visibilitychange", function () { if (!document.hidden) checkUpdate(); });
+        window.addEventListener("focus", checkUpdate);
+        setInterval(checkUpdate, 60000);
+      })
       .catch(function () { /* offline support is optional */ });
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (swHadController) maybeAutoReload();
+    });
   }
 
   /* ----- initial render ----- */

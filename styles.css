@@ -31,8 +31,9 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 66px;
-  padding: 12px 14px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 10px 12px;
   background: #14532d;
   border: 1px solid #2a6b45;
   border-radius: 14px;
@@ -42,8 +43,8 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 .tool-btn:active { background: #1a6238; }
 .tool-icon {
   flex: 0 0 auto;
-  width: 46px;
-  height: 46px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: #0b3d20;
   border: 1px solid #e9ba4e;
@@ -52,7 +53,7 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   justify-content: center;
 }
 .tool-text { flex: 1 1 auto; min-width: 0; }
-.tool-title { display: block; font-size: 1.05rem; font-weight: 700; line-height: 1.3; }
+.tool-title { display: block; font-size: 0.95rem; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
 .tool-sub {
   display: block;
   font-size: 0.82rem;
@@ -177,6 +178,17 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   line-height: 1.5;
   font-size: 0.92rem;
 }
+.offline-badge {
+  margin: 12px 0 0;
+  background: #e9ba4e;
+  color: #0b3d20;
+  border-radius: 999px;
+  padding: 8px 14px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
 .bulk-box {
   margin-top: 12px;
   border-radius: 12px;
@@ -206,6 +218,34 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   border-radius: 2px;
   background: linear-gradient(90deg, transparent, #e9ba4e, transparent);
 }
+.app-footer .footer-sub {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 4px;
+  letter-spacing: 0.04em;
+}
+
+/* ---- Contact Me ---- */
+.contact-card h2 { margin-bottom: 2px; }
+.wa-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #1da851;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+}
+.wa-btn:active { background: #178a44; }
+.wa-icon { flex: 0 0 auto; display: flex; }
+.wa-text { flex: 1 1 auto; min-width: 0; }
+.wa-title { display: block; font-size: 1rem; line-height: 1.3; }
+.wa-number { display: block; font-size: 0.92rem; font-weight: 600; opacity: 0.95; letter-spacing: 0.03em; }
 
 /* ---- Overlays / sheets ---- */
 .overlay {
@@ -249,6 +289,39 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   background: #0d2f1e;
   color: #fff;
   font-size: 1rem;
+}
+.sheet-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+.sheet-user {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #e9ba4e;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #e9ba4e;
+  background: #0d2f1e;
+  color: #e9ba4e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.icon-btn:active { background: #14532d; }
+@media (max-width: 380px) {
+  .sheet-head { flex-wrap: wrap; }
+  .sheet-user { max-width: 130px; }
 }
 .sheet-note { color: #d7e8dc; font-size: 0.88rem; line-height: 1.5; margin: 8px 0 0; }
 .form-msg { min-height: 1.4em; margin: 10px 0 0; font-size: 0.92rem; }
@@ -324,7 +397,6 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 .auth-note { color: #d7e8dc; margin: 0 0 10px; line-height: 1.5; }
 .auth-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .auth-actions .save-btn, .auth-actions .copy-btn { margin-top: 0; flex: 1; }
-#recBy:disabled { opacity: 0.85; cursor: not-allowed; background: #123f27; }
 .rec-sheet { max-width: 640px; }
 .rec-body { padding: 14px 16px 18px; overflow-y: auto; }
 .form-grid {
@@ -334,6 +406,7 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 }
 @media (max-width: 480px) {
   .form-grid { grid-template-columns: 1fr; }
+  .custom-dates { grid-template-columns: 1fr; }
 }
 .rec-tools { margin-top: 18px; }
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -372,7 +445,10 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 .rec-actions button.rec-del { background: #7f1d1d; border-color: #fca5a5; }
 .rec-empty { color: #d7e8dc; text-align: center; padding: 18px 0; }
 
-@media (max-width: 380px) {
-  .action-row { grid-template-columns: 1fr; }
-  .tool-sub { font-size: 0.8rem; }
+/* Dono buttons hamesha ek row me (chhoti screen par bhi) — stacking khatam. */
+@media (max-width: 400px) {
+  .tool-btn { padding: 10px; gap: 8px; }
+  .tool-icon { width: 34px; height: 34px; }
+  .tool-title { font-size: 0.9rem; }
+  .tool-chev { display: none; }
 }
