@@ -1793,17 +1793,27 @@
     recQuery = $("recSearch").value.trim();
     renderRecList();
   });
-  function escHtml(v) {
-    return String(v === null || v === undefined ? "" : v)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+  // v27 (2026-11-19): Professional Report = REAL PDF (Boss order 19 Nov
+  // 22:15 PKT — "isi docs file ko PDF form bhi do, HTML ki jagha").
+  // Hand-rolled MINIMAL PDF writer — NO library/CDN/network (offline-safe).
+  // Mirrors the Excel v24 template: title "Incoming Diesel", 2-row header
+  // + Diesel group, Temp/Density before Litres/KG, d-mmm-yy / h:mm AM/PM,
+  // Density 0.000, Litres/KG General, Total row DDEBF7, thin black borders
+  // on ALL sides, oldest-first, landscape A4, margins 0.7/0.75.
+  // (buildReportHTML was REMOVED in v27 — the HTML file is gone.)
+  // Text color: every text op sets "0 0 0 rg" first — without it the text
+  // inherits the last fill color (title 0.93 gray) and renders washed-out.
+  var HWV = [191, 222, 260, 278, 333, 334, 355, 389, 469, 500, 556, 584, 611, 667, 722, 778, 833, 889, 944, 1015];
+  var HWI = "336::A=0447;3433::::::::::33;;;:C==>>=<?>39=:@>?=?>=<>=B==<3338:4::9::3::1191@::::493:9>999525;"; // Helvetica widths, run-length coded: HWI[c-32] -> index into HWV (charCode-48)
+  function pW(s, size) { // Helvetica width (pt); bold headers measured with
+    var w = 0, i, c; // regular widths — all fit with >=11pt margin (verified)
+    s = String(s == null ? "" : s);
+    for (i = 0; i < s.length; i++) {
+      c = s.charCodeAt(i);
+      w += c > 31 && c < 127 ? HWV[HWI.charCodeAt(c - 32) - 48] : c === 176 ? 400 : 556;
+    }
+    return w * size / 1000;
   }
-  // v25 (2026-11-19): HTML report = Excel template ka MIRROR — title
-  // "Incoming Diesel" (gray125), 2-row header + Diesel group,
-  // Temp/Density Litres/KG se PEHLE, date d-mmm-yy, time h:mm AM/PM,
-  // Density 0.000, Litres/KG General (5000, not 5000.00), Total row
-  // DDEBF7, widths Excel ke proportional. Saved By KHATAM, subtitle
-  // khatam. Print button + @page landscape barkarar.
   function fmtDateShort(iso) {
     var p = String(iso || "").split("-");
     if (p.length < 3) return "";
@@ -1820,44 +1830,107 @@
     var h12 = h % 12; if (h12 === 0) h12 = 12;
     return h12 + ":" + m + " " + ap;
   }
-  function buildReportHTML(rows) {
-    rows = sortRowsAsc(rows); // v25: oldest first (Boss order 19 Nov 21:36 PKT)
+  function buildReportPDF(rows) {
+    rows = sortRowsAsc(rows);
     var tot = sumTotals(rows);
-    var trs = rows.map(function (r) {
-      var dens = (r.diesel_density_g_per_l == null || isNaN(Number(r.diesel_density_g_per_l))) ? "" : Number(r.diesel_density_g_per_l).toFixed(3);
-      return "<tr><td>" + escHtml(fmtDateShort(r.record_date)) + "</td><td>" + escHtml(fmtTime12(r.record_time)) + "</td><td>" + escHtml(r.vehicle_number || "") + "</td><td>" + escHtml(r.driver_name || "") + "</td><td>" + escHtml(r.company_name || "") + "</td><td>" + escHtml(r.receiver_name || "") + "</td><td>" + (r.diesel_temperature == null ? "" : escHtml(fmtCsvNum(r.diesel_temperature)) + "°C") + "</td><td>" + escHtml(dens) + "</td><td>" + escHtml(fmtCsvNum(r.diesel_litres)) + "</td><td>" + escHtml(fmtCsvNum(r.diesel_kg)) + "</td></tr>";
-    }).join("");
-    if (!trs) trs = "<tr><td colspan=\"10\" class=\"empty\">Koi record nahi mila.</td></tr>";
-    return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Incoming Diesel</title><style>"
-      + "body{font-family:Calibri,Arial,sans-serif;margin:0;background:#fff;color:#000}"
-      + "table{width:100%;min-width:900px;border-collapse:collapse;background:#fff;table-layout:fixed}"
-      + ".table-wrap{overflow-x:auto}"
-      + "td,th{border:1px solid #000;text-align:center;vertical-align:middle;font-size:12px;line-height:1.25;padding:3px 6px;overflow-wrap:anywhere}"
-      + "td.title-cell{font-size:16px;font-weight:700;background-color:#fff;background-image:radial-gradient(#7f7f7f .8px,transparent 1px);background-size:4px 4px;padding:5px 8px}"
-      + "thead th{font-weight:700;background:#fff}"
-      + "thead tr.hrow1 th{position:sticky;top:0;z-index:1}"
-      + "thead tr.hrow2 th{position:sticky;top:21px;z-index:1}"
-      + "tbody tr:hover td{background:#f2f7f2}"
-      + "tr{break-inside:avoid}"
-      + "tfoot td{background:#ddebf7;font-weight:700}"
-      + ".empty{text-align:center;opacity:.7;padding:24px}"
-      + ".print-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 32px;background:#fff;border-bottom:1px solid #d8e2da}.print-bar button{background:#0b3d20;color:#fff;border:1px solid #0b3d20;border-radius:10px;padding:10px 18px;font-weight:700;cursor:pointer}.print-bar button:active{background:#14532d}"
-      + "@media (max-width:600px){.print-bar{padding:12px 16px}td,th{padding:3px 4px}}"
-      + "@media print{@page{size:landscape;margin:14mm}body{background:#fff}.print-bar{display:none!important}.table-wrap{overflow:visible}table{min-width:0}thead{display:table-header-group}tfoot{display:table-footer-group}td.title-cell,th,tfoot td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}"
-      + "</style></head><body>"
-      + "<div class=\"print-bar\"><button type=\"button\" onclick=\"window.print()\">Print Karein / PDF Save Karein</button></div>"
-      + "<div class=\"table-wrap\"><table><colgroup><col style=\"width:8.8%\"><col style=\"width:9.3%\"><col style=\"width:7.7%\"><col style=\"width:9.7%\"><col style=\"width:19.4%\"><col style=\"width:14.7%\"><col style=\"width:6%\"><col style=\"width:7.3%\"><col style=\"width:8.8%\"><col style=\"width:8.3%\"></colgroup>"
-      + "<thead><tr><td colspan=\"10\" class=\"title-cell\">Incoming Diesel</td></tr><tr class=\"hrow1\"><th rowspan=\"2\">Date</th><th rowspan=\"2\">Time</th><th rowspan=\"2\">Vehicle</th><th rowspan=\"2\">Driver</th><th rowspan=\"2\">Company</th><th rowspan=\"2\">Receiver</th><th colspan=\"4\">Diesel</th></tr><tr class=\"hrow2\"><th>Temp</th><th>Density</th><th>Litres</th><th>KG's</th></tr></thead>"
-      + "<tbody>" + trs + "</tbody>"
-      + "<tfoot><tr><td colspan=\"8\">Total</td><td>" + escHtml(fmtCsvNum(tot.litres)) + "</td><td>" + escHtml(fmtCsvNum(tot.kg)) + "</td></tr></tfoot></table></div>"
-      + "</body></html>";
+    var PW = 841.89, PH = 595.28, ML = 50.4;
+    var CW = [8.8, 9.3, 7.7, 9.7, 19.4, 14.7, 6, 7.3, 8.8, 8.3]; // % (v25 mirror)
+    var pw = PW - 100.8, ph = PH - 108; // margins 0.7/0.7/0.75/0.75 in
+    var colX = [ML], colW = [];
+    CW.forEach(function (pc, i) { colW.push(pw * pc / 100); colX.push(colX[i] + colW[i]); });
+    var tX = colX.map(function (x) { return x + 2; });
+    var tW = colW.map(function (w) { return w - 4; });
+    var titleH = 30, hdrH = 15.6, rowH = 15.6;
+    var per = Math.floor((ph - titleH - 2 * hdrH - rowH) / rowH); // 26/page
+    var pages = [], idx = 0;
+    do {
+      var chunk = rows.slice(idx, idx + per);
+      idx += chunk.length;
+      pages.push(chunk);
+    } while (idx < rows.length);
+    function n2(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+    function dP(chunk, isFirst, isLast) {
+      var s = "";
+      function rect(x, yB, w, h, fill) {
+        var r = n2(x) + " " + n2(yB) + " " + n2(w) + " " + n2(h) + " re ";
+        if (fill) s += n2(fill[0]) + " " + n2(fill[1]) + " " + n2(fill[2]) + " rg " + r + "f ";
+        s += "0 0 0 RG 0.5 w " + r + "S\n";
+      }
+      function text(x, yBase, size, bold, v, maxW) {
+        v = String(v == null ? "" : v);
+        while (v.length && pW(v, size) > maxW) v = v.slice(0, -1);
+        if (!v) return;
+        var cx = x + (maxW - pW(v, size)) / 2;
+        var e = v.replace(/[^\x20-\x7E\xA0-\xFF]/g, "?").replace(/[()\\]/g, "\\$&");
+        s += "BT /F" + (bold ? "2" : "1") + " " + size + " Tf 0 0 0 rg 1 0 0 1 " + n2(cx) + " " + n2(yBase) + " Tm (" + e + ") Tj ET\n";
+      }
+      var y = PH - 54, i, j;
+      if (isFirst) {
+        rect(ML, y - titleH, pw, titleH, [0.93, 0.93, 0.93]);
+        text(ML, y - 20.6, 16, true, "Incoming Diesel", pw);
+        y -= titleH;
+      }
+      var y3 = y - 2 * hdrH;
+      ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver"].forEach(function (h, ci) {
+        rect(colX[ci], y3, colW[ci], 2 * hdrH, null);
+        text(tX[ci], y - 19.8, 12, true, h, tW[ci]);
+      });
+      var gW = colX[10] - colX[6];
+      rect(colX[6], y - hdrH, gW, hdrH, null);
+      text(tX[6], y - 12, 12, true, "Diesel", gW - 4);
+      ["Temp", "Density", "Litres", "KG's"].forEach(function (h, ci) {
+        rect(colX[6 + ci], y3, colW[6 + ci], hdrH, null);
+        text(tX[6 + ci], y - 27.6, 12, true, h, tW[6 + ci]);
+      });
+      y = y3;
+      chunk.forEach(function (r) {
+        var dens = (r.diesel_density_g_per_l == null || isNaN(Number(r.diesel_density_g_per_l))) ? "" : Number(r.diesel_density_g_per_l).toFixed(3);
+        var vals = [fmtDateShort(r.record_date), fmtTime12(r.record_time), r.vehicle_number || "", r.driver_name || "", r.company_name || "", r.receiver_name || "", (r.diesel_temperature == null ? "" : fmtCsvNum(r.diesel_temperature) + "°C"), dens, fmtCsvNum(r.diesel_litres), fmtCsvNum(r.diesel_kg)];
+        for (j = 0; j < 10; j++) {
+          rect(colX[j], y - rowH, colW[j], rowH, null);
+          text(tX[j], y - 12, 12, false, vals[j], tW[j]);
+        }
+        y -= rowH;
+      });
+      if (isLast) {
+        var labW = colX[8] - ML;
+        var tf = [0.867, 0.922, 0.969]; // DDEBF7
+        rect(ML, y - rowH, labW, rowH, tf);
+        text(ML + 2, y - 12, 12, true, "Total", labW - 4);
+        rect(colX[8], y - rowH, colW[8], rowH, tf);
+        text(tX[8], y - 12, 12, true, fmtCsvNum(tot.litres), tW[8]);
+        rect(colX[9], y - rowH, colW[9], rowH, tf);
+        text(tX[9], y - 12, 12, true, fmtCsvNum(tot.kg), tW[9]);
+      }
+      return s;
+    }
+    var pdf = "%PDF-1.4\n", offs = {};
+    function obj(n, s) { offs[n] = pdf.length; pdf += n + " 0 obj\n" + s + "\nendobj\n"; }
+    var kids = "";
+    for (var p = 0; p < pages.length; p++) kids += (6 + 2 * p) + " 0 R ";
+    obj(1, "<< /Type /Catalog /Pages 2 0 R >>");
+    obj(2, "<< /Type /Pages /Kids [" + kids + "] /Count " + pages.length + " >>");
+    obj(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+    obj(4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+    pages.forEach(function (chunk, p) {
+      var content = dP(chunk, p === 0, p === pages.length - 1);
+      obj(5 + 2 * p, "<< /Length " + content.length + " >>\nstream\n" + content + "\nendstream");
+      obj(6 + 2 * p, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 841.89 595.28] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents " + (5 + 2 * p) + " 0 R >>");
+    });
+    var xrefPos = pdf.length;
+    var total = 4 + 2 * pages.length;
+    pdf += "xref\n0 " + (total + 1) + "\n0000000000 65535 f \n";
+    for (var n = 1; n <= total; n++) pdf += ("0000000000" + (offs[n] || 0)).slice(-10) + " 00000 n \n";
+    pdf += "trailer\n<< /Size " + (total + 1) + " /Root 1 0 R >>\nstartxref\n" + xrefPos + "\n%%EOF";
+    var bytes = new Uint8Array(pdf.length);
+    for (var q = 0; q < pdf.length; q++) bytes[q] = pdf.charCodeAt(q) & 255;
+    return new Blob([bytes], { type: "application/pdf" });
   }
   $("recReport").addEventListener("click", function () {
-    var html = buildReportHTML(recShown);
-    var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    var blob = buildReportPDF(recShown);
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "diesel-report.html";
+    a.download = "diesel-report.pdf";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
