@@ -331,17 +331,17 @@
     });
     return { litres: litres, kg: kg, count: records.length };
   }
-  function fmtCsvDate(iso) {
-    // "2026-10-31" -> "10/31/2026" (template format, no zero padding)
+  function xlsxDateSerial(iso) {
+    // v24: "2026-11-19" -> Excel serial 46345 (days since 1899-12-30).
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
-    if (!m) return iso || "";
-    return Number(m[2]) + "/" + Number(m[3]) + "/" + m[1];
+    if (!m) return null;
+    return Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000) + 25569;
   }
-  function fmtCsvTime(t) {
-    // "07:00:00" -> "7:00:00" (template format, hour without leading zero)
-    var parts = String(t || "").split(":");
-    if (parts.length < 2) return t || "";
-    return Number(parts[0]) + ":" + parts[1] + (parts[2] !== undefined ? ":" + parts[2] : "");
+  function xlsxTimeFrac(t) {
+    // v24: "20:00:00" (ya "20:00") -> 0.8333... (din ka hissa).
+    var p = String(t || "").split(":");
+    if (p.length < 2 || isNaN(+p[0]) || isNaN(+p[1])) return null;
+    return ((+p[0]) * 3600 + (+p[1]) * 60 + (+p[2] || 0)) / 86400;
   }
   function fmtCsvNum(n) {
     // Template shows whole numbers without decimals (5000, not 5000.00)
@@ -387,15 +387,18 @@
     return new Blob(parts.concat(central).concat(end), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
   function buildReportXlsx(rows) {
-    // The user's design as a real .xlsx: merged title, Diesel group header,
-    // borders, fills, column widths, centred text, and a SUM formula for the
-    // Total row — things a .csv can never carry.
-    // v17: 11 columns — Temperature (°C) + Density (g/L) aakhir mein, taake
-    // pehle wale 9 columns ki jagah/design waisa hi rahe. Temp/Density ka
-    // koi total nahi hota (average ka matlab nahi), is liye Total row mein
-    // un ke cells khaali rehte hain.
-    var widths = [14, 11, 14, 14, 20, 18, 18, 12, 12, 12, 13];
-    var cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+    // v24: Boss ki apni template file (diesel-records (6).xlsx) ka EXACT
+    // format — 10 columns, Saved By KHATAM, Temp/Density Litres/KG se
+    // PEHLE, 2-row header + Diesel group, REAL Excel date/time values,
+    // DDEBF7 total. Data hamesha live records se (koi hardcode nahi).
+    // Style index (target file ki styles.xml jaisi): 0 default, 1 sub-header
+    // (12b), 2 data (12), 3 total formula (12b + DDEBF7), 4 blank row,
+    // 5 title (16b + gray125), 6 date d-mmm-yy, 7 time h:mm AM/PM,
+    // 8 density 0.000, 9 Diesel (12b, LTB), 10 header filler TB,
+    // 11 header top LRT, 12 header bottom LRB, 13 Total label (12b +
+    // DDEBF7, LTB), 14 total filler TB, 15 total filler RTB.
+    var widths = [10.77734375, 11.33203125, 9.33203125, 11.77734375, 23.6640625, 17.88671875, 7.33203125, 8.88671875, 10.77734375, 10.109375];
+    var cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
     var n = rows.length;
     var totalRow = 8 + n;
     function strCell(ref, style, v) { return "<c r=\"" + ref + "\" s=\"" + style + "\" t=\"inlineStr\"><is><t xml:space=\"preserve\">" + escXml(v) + "</t></is></c>"; }
@@ -403,57 +406,88 @@
     function formulaCell(ref, style, formula, cached) { return "<c r=\"" + ref + "\" s=\"" + style + "\"><f>" + formula + "</f><v>" + cached + "</v></c>"; }
     function emptyCell(ref, style) { return "<c r=\"" + ref + "\" s=\"" + style + "\"/>"; }
     var sheetRows = [], i, j;
-    var titleRow = "<row r=\"1\" ht=\"30\" customHeight=\"1\">" + strCell("A1", 1, "Incoming Diesel Stock");
-    for (i = 1; i < 11; i++) titleRow += emptyCell(cols[i] + "1", 1);
+    var titleRow = "<row r=\"1\" spans=\"1:10\" ht=\"30\" customHeight=\"1\">" + strCell("A1", 5, "Incoming Diesel ");
+    for (i = 1; i < 10; i++) titleRow += emptyCell(cols[i] + "1", 5);
     sheetRows.push(titleRow + "</row>");
-    var headers = ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver", "Saved By", "Diesel", "", "Temp", "Density"];
-    var hr = "<row r=\"2\">";
-    headers.forEach(function (h, hi) { hr += h ? strCell(cols[hi] + "2", 2, h) : emptyCell(cols[hi] + "2", 2); });
+    var h2 = ["Date", "Time", "Vehicle", "Driver", "Company", "Receiver"];
+    var hr = "<row r=\"2\" spans=\"1:10\" ht=\"15.6\">";
+    h2.forEach(function (h, hi) { hr += strCell(cols[hi] + "2", 11, h); });
+    hr += strCell("G2", 9, "Diesel");
+    for (i = 7; i < 10; i++) hr += emptyCell(cols[i] + "2", 10);
     sheetRows.push(hr + "</row>");
-    var sr = "<row r=\"3\">";
-    for (i = 0; i < 7; i++) sr += emptyCell(cols[i] + "3", 6);
-    sheetRows.push(sr + strCell("H3", 2, "Litres") + strCell("I3", 2, "KG") + emptyCell("J3", 6) + emptyCell("K3", 6) + "</row>");
+    var sub3 = ["Temp", "Density", "Litres", "KG's"];
+    var sr = "<row r=\"3\" spans=\"1:10\" ht=\"15.6\">";
+    for (i = 0; i < 6; i++) sr += emptyCell(cols[i] + "3", 12);
+    sub3.forEach(function (h, hi) { sr += strCell(cols[6 + hi] + "3", 1, h); });
+    sheetRows.push(sr + "</row>");
     rows.forEach(function (r, idx) {
       var rr = 4 + idx;
-      sheetRows.push("<row r=\"" + rr + "\">" +
-        strCell("A" + rr, 3, fmtCsvDate(r.record_date)) +
-        strCell("B" + rr, 3, fmtCsvTime(r.record_time)) +
-        strCell("C" + rr, 3, r.vehicle_number || "") +
-        strCell("D" + rr, 3, r.driver_name || "") +
-        strCell("E" + rr, 3, r.company_name || "") +
-        strCell("F" + rr, 3, r.receiver_name || r.saved_by_name || "") +
-        strCell("G" + rr, 3, r.saved_by_name || "") +
-        numCell("H" + rr, 3, fmtCsvNum(r.diesel_litres)) +
-        numCell("I" + rr, 3, fmtCsvNum(r.diesel_kg)) +
-        strCell("J" + rr, 3, r.diesel_temperature == null ? "" : fmtCsvNum(r.diesel_temperature) + "°C") +
-        strCell("K" + rr, 3, r.diesel_density_g_per_l == null ? "" : fmtCsvNum(r.diesel_density_g_per_l)) + "</row>");
+      var ds = xlsxDateSerial(r.record_date);
+      var tf = xlsxTimeFrac(r.record_time);
+      sheetRows.push("<row r=\"" + rr + "\" spans=\"1:10\" ht=\"15.6\">" +
+        (ds === null ? strCell("A" + rr, 6, "") : numCell("A" + rr, 6, ds)) +
+        (tf === null ? strCell("B" + rr, 7, "") : numCell("B" + rr, 7, tf)) +
+        strCell("C" + rr, 2, r.vehicle_number || "") +
+        strCell("D" + rr, 2, r.driver_name || "") +
+        strCell("E" + rr, 2, r.company_name || "") +
+        strCell("F" + rr, 2, r.receiver_name || r.saved_by_name || "") +
+        strCell("G" + rr, 2, r.diesel_temperature == null ? "" : fmtCsvNum(r.diesel_temperature) + "°C") +
+        (r.diesel_density_g_per_l == null ? strCell("H" + rr, 2, "") : numCell("H" + rr, 8, fmtCsvNum(r.diesel_density_g_per_l))) +
+        numCell("I" + rr, 2, fmtCsvNum(r.diesel_litres)) +
+        numCell("J" + rr, 2, fmtCsvNum(r.diesel_kg)) + "</row>");
     });
     for (i = 0; i < 4; i++) {
-      var br = 4 + n + i, brow = "<row r=\"" + br + "\">";
-      for (j = 0; j < 11; j++) brow += emptyCell(cols[j] + br, 6);
+      var br = 4 + n + i, brow = "<row r=\"" + br + "\" spans=\"1:10\">";
+      for (j = 0; j < 10; j++) brow += emptyCell(cols[j] + br, 4);
       sheetRows.push(brow + "</row>");
     }
     var tot = sumTotals(rows);
-    var tr = "<row r=\"" + totalRow + "\">" + strCell("A" + totalRow, 4, "Total");
-    for (i = 1; i < 7; i++) tr += emptyCell(cols[i] + totalRow, 4);
-    tr += formulaCell("H" + totalRow, 5, "SUM(H4:H" + (totalRow - 1) + ")", fmtCsvNum(tot.litres));
-    tr += formulaCell("I" + totalRow, 5, "SUM(I4:I" + (totalRow - 1) + ")", fmtCsvNum(tot.kg));
-    tr += emptyCell("J" + totalRow, 4) + emptyCell("K" + totalRow, 4);
+    var tr = "<row r=\"" + totalRow + "\" spans=\"1:10\" ht=\"15.6\">" + strCell("A" + totalRow, 13, "Total");
+    for (i = 1; i < 7; i++) tr += emptyCell(cols[i] + totalRow, 14);
+    tr += emptyCell("H" + totalRow, 15);
+    tr += formulaCell("I" + totalRow, 3, "SUM(I4:I" + (totalRow - 1) + ")", fmtCsvNum(tot.litres));
+    tr += formulaCell("J" + totalRow, 3, "SUM(J4:J" + (totalRow - 1) + ")", fmtCsvNum(tot.kg));
     sheetRows.push(tr + "</row>");
     var colsXml = "<cols>";
     widths.forEach(function (w, wi) { colsXml += "<col min=\"" + (wi + 1) + "\" max=\"" + (wi + 1) + "\" width=\"" + w + "\" customWidth=\"1\"/>"; });
     colsXml += "</cols>";
     var sheetXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
       + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
-      + "<dimension ref=\"A1:K" + totalRow + "\"/>"
+      + "<dimension ref=\"A1:J" + totalRow + "\"/>"
       + "<sheetViews><sheetView showGridLines=\"1\" workbookViewId=\"0\"/></sheetViews>"
-      + "<sheetFormatPr defaultRowHeight=\"15\"/>"
+      + "<sheetFormatPr defaultRowHeight=\"14.4\"/>"
       + colsXml
       + "<sheetData>" + sheetRows.join("") + "</sheetData>"
-      + "<mergeCells count=\"3\"><mergeCell ref=\"A1:K1\"/><mergeCell ref=\"H2:I2\"/><mergeCell ref=\"A" + totalRow + ":G" + totalRow + "\"/></mergeCells>"
+      + "<mergeCells count=\"9\"><mergeCell ref=\"A1:J1\"/><mergeCell ref=\"G2:J2\"/><mergeCell ref=\"F2:F3\"/><mergeCell ref=\"E2:E3\"/><mergeCell ref=\"D2:D3\"/><mergeCell ref=\"C2:C3\"/><mergeCell ref=\"B2:B3\"/><mergeCell ref=\"A2:A3\"/><mergeCell ref=\"A" + totalRow + ":H" + totalRow + "\"/></mergeCells>"
+      + "<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>"
+      + "<pageSetup orientation=\"landscape\"/>"
       + "</worksheet>";
+    var bSides = ["0000", "1111", "1011", "0011", "1110", "1101", "0111"];
+    var bNames = ["left", "right", "top", "bottom"];
+    var bordersXml = "<borders count=\"7\">";
+    bSides.forEach(function (bs) {
+      var bx = "<border>";
+      bNames.forEach(function (sn, si) { bx += bs.charAt(si) === "1" ? "<" + sn + " style=\"thin\"><color auto=\"1\"/></" + sn + ">" : "<" + sn + "/>"; });
+      bordersXml += bx + "<diagonal/></border>";
+    });
+    bordersXml += "</borders>";
+    var xfSpec = ["0,0,0,0,0", "0,2,0,1,1", "0,3,0,1,1", "0,2,2,1,1", "0,0,0,1,0", "0,1,1,1,1", "15,3,0,1,1", "18,3,0,1,1", "166,3,0,1,1", "0,2,0,2,1", "0,2,0,3,1", "0,2,0,4,1", "0,2,0,5,1", "0,2,2,2,1", "0,2,2,3,1", "0,2,2,6,1"];
+    var xfsXml = "<cellXfs count=\"16\">";
+    xfSpec.forEach(function (sp) {
+      var p = sp.split(",");
+      var x = "<xf numFmtId=\"" + p[0] + "\" fontId=\"" + p[1] + "\" fillId=\"" + p[2] + "\" borderId=\"" + p[3] + "\" xfId=\"0\"";
+      if (p[0] !== "0") x += " applyNumberFormat=\"1\"";
+      if (p[1] !== "0") x += " applyFont=\"1\"";
+      if (p[2] !== "0") x += " applyFill=\"1\"";
+      if (p[3] !== "0") x += " applyBorder=\"1\"";
+      if (p[4] === "1") x += " applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>";
+      else x += "/>";
+      xfsXml += x;
+    });
+    xfsXml += "</cellXfs>";
     var stylesXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
       + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+      + "<numFmts count=\"1\"><numFmt numFmtId=\"166\" formatCode=\"0.000\"/></numFmts>"
       + "<fonts count=\"4\">"
       + "<font><sz val=\"11\"/><color theme=\"1\"/><name val=\"Calibri\"/><family val=\"2\"/></font>"
       + "<font><b/><sz val=\"16\"/><color theme=\"1\"/><name val=\"Calibri\"/><family val=\"2\"/></font>"
@@ -462,23 +496,12 @@
       + "</fonts>"
       + "<fills count=\"3\">"
       + "<fill><patternFill patternType=\"none\"/></fill>"
-      + "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFFCE4D6\"/><bgColor indexed=\"64\"/></patternFill></fill>"
+      + "<fill><patternFill patternType=\"gray125\"/></fill>"
       + "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FFDDEBF7\"/><bgColor indexed=\"64\"/></patternFill></fill>"
       + "</fills>"
-      + "<borders count=\"2\">"
-      + "<border><left/><right/><top/><bottom/><diagonal/></border>"
-      + "<border><left style=\"thin\"/><right style=\"thin\"/><top style=\"thin\"/><bottom style=\"thin\"/><diagonal/></border>"
-      + "</borders>"
+      + bordersXml
       + "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>"
-      + "<cellXfs count=\"7\">"
-      + "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/>"
-      + "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"1\" borderId=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
-      + "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"0\" borderId=\"1\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
-      + "<xf numFmtId=\"0\" fontId=\"3\" fillId=\"0\" borderId=\"1\" applyFont=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
-      + "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"2\" borderId=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
-      + "<xf numFmtId=\"0\" fontId=\"2\" fillId=\"2\" borderId=\"1\" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\" applyAlignment=\"1\"><alignment horizontal=\"center\" vertical=\"center\"/></xf>"
-      + "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" applyBorder=\"1\"/>"
-      + "</cellXfs>"
+      + xfsXml
       + "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>"
       + "</styleSheet>";
     var workbookXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
@@ -508,7 +531,7 @@
       + "</Types>";
     var coreXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
       + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
-      + "<dc:title>Incoming Diesel Stock</dc:title><dc:creator>Diesel Converter</dc:creator>"
+      + "<dc:title>Incoming Diesel</dc:title><dc:creator>Diesel Converter</dc:creator>"
       + "</cp:coreProperties>";
     var appXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
       + "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">"
@@ -525,6 +548,7 @@
       { name: "docProps/app.xml", data: appXml }
     ]);
   }
+
 
   /* ---------- node test exports ---------- */
   if (typeof module !== "undefined" && module.exports) {
