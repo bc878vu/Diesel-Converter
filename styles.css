@@ -423,8 +423,9 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 .rec-tools { margin-top: 10px; }
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .dl-row { margin-bottom: 10px; }
-.file-btn { padding: 6px; border: 0; background: none; cursor: pointer; }
-.file-btn svg { display: block; width: 36px; height: 36px; }
+.file-btn { padding: 6px; border: 1px solid #2a6b45; background: #123f27; border-radius: 10px; cursor: pointer; }
+.file-btn:active { background: #1a6238; }
+.file-btn svg { display: block; width: 40px; height: 40px; }
 .file-xls { color: #217346; }
 .file-pdf { color: #dc2626; }
 .form-msg:empty { display: none; }
