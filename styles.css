@@ -420,8 +420,14 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
   .form-grid { grid-template-columns: 1fr; }
   .custom-dates { grid-template-columns: 1fr; }
 }
-.rec-tools { margin-top: 18px; }
+.rec-tools { margin-top: 10px; }
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.dl-row { margin-bottom: 10px; }
+.file-btn { padding: 6px; border: 0; background: none; cursor: pointer; }
+.file-btn svg { display: block; width: 36px; height: 36px; }
+.file-xls { color: #217346; }
+.file-pdf { color: #dc2626; }
+.form-msg:empty { display: none; }
 .custom-dates {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -471,7 +471,8 @@
     var colsXml = "<cols>";
     widths.forEach(function (w, wi) { colsXml += "<col min=\"" + (wi + 1) + "\" max=\"" + (wi + 1) + "\" width=\"" + w + "\" customWidth=\"1\"/>"; });
     colsXml += "</cols>";
-    var sheetXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var XH = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
+    var sheetXml = XH
       + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
       + "<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>"
       + "<dimension ref=\"A1:J" + totalRow + "\"/>"
@@ -506,7 +507,7 @@
       xfsXml += x;
     });
     xfsXml += "</cellXfs>";
-    var stylesXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var stylesXml = XH
       + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
       + "<numFmts count=\"1\"><numFmt numFmtId=\"166\" formatCode=\"0.000\"/></numFmts>"
       + "<fonts count=\"4\">"
@@ -525,22 +526,22 @@
       + xfsXml
       + "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>"
       + "</styleSheet>";
-    var workbookXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var workbookXml = XH
       + "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
       + "<sheets><sheet name=\"Diesel Records\" sheetId=\"1\" r:id=\"rId1\"/></sheets>"
       + "</workbook>";
-    var workbookRels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var workbookRels = XH
       + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
       + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
       + "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>"
       + "</Relationships>";
-    var rootRels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var rootRels = XH
       + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
       + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
       + "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>"
       + "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>"
       + "</Relationships>";
-    var contentTypes = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var contentTypes = XH
       + "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
       + "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
       + "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
@@ -550,11 +551,11 @@
       + "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>"
       + "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>"
       + "</Types>";
-    var coreXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var coreXml = XH
       + "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\">"
       + "<dc:title>Incoming Diesel</dc:title><dc:creator>Diesel Converter</dc:creator>"
       + "</cp:coreProperties>";
-    var appXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+    var appXml = XH
       + "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\">"
       + "<Application>Diesel Converter</Application>"
       + "</Properties>";
@@ -572,26 +573,6 @@
 
 
   /* ---------- node test exports ---------- */
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = {
-      resolveDensity: resolveDensity,
-      litresToKg: litresToKg,
-      kgToLitres: kgToLitres,
-      tokenize: tokenize,
-      evaluateExpression: evaluateExpression,
-      fmt2: fmt2,
-      fmtDensity: fmtDensity,
-      fmtResult: fmtResult,
-      filterRecords: filterRecords,
-      searchRecords: searchRecords,
-      sumTotals: sumTotals,
-      localISODate: localISODate,
-      weekBounds: weekBounds,
-      weekStartISO: weekStartISO,
-      monthLabel: monthLabel,
-      weekLabel: weekLabel
-    };
-  }
   if (typeof document === "undefined") return;
 
   /* ================= DOM application ================= */
