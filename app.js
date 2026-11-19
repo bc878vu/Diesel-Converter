@@ -473,6 +473,7 @@
     colsXml += "</cols>";
     var sheetXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
       + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+      + "<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>"
       + "<dimension ref=\"A1:J" + totalRow + "\"/>"
       + "<sheetViews><sheetView showGridLines=\"1\" workbookViewId=\"0\"/></sheetViews>"
       + "<sheetFormatPr defaultRowHeight=\"14.4\"/>"
@@ -480,7 +481,7 @@
       + "<sheetData>" + sheetRows.join("") + "</sheetData>"
       + "<mergeCells count=\"9\"><mergeCell ref=\"A1:J1\"/><mergeCell ref=\"G2:J2\"/><mergeCell ref=\"F2:F3\"/><mergeCell ref=\"E2:E3\"/><mergeCell ref=\"D2:D3\"/><mergeCell ref=\"C2:C3\"/><mergeCell ref=\"B2:B3\"/><mergeCell ref=\"A2:A3\"/><mergeCell ref=\"A" + totalRow + ":H" + totalRow + "\"/></mergeCells>"
       + "<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>"
-      + "<pageSetup orientation=\"landscape\"/>"
+      + "<pageSetup orientation=\"landscape\" fitToWidth=\"1\" fitToHeight=\"0\"/>"
       + "</worksheet>";
     var bSides = ["0000", "1111", "1011", "0011", "1110", "1101", "0111"];
     var bNames = ["left", "right", "top", "bottom"];
