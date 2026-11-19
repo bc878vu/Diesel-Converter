@@ -386,6 +386,25 @@
     var end = [u32(0x06054b50), u16(0), u16(0), u16(files.length), u16(files.length), u32(cdSize), u32(offset), u16(0)];
     return new Blob(parts.concat(central).concat(end), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
+  // v25: reports oldest-first — Boss order 19 Nov 21:36 PKT ("new record
+  // nichy ay, old top pr he rhy"). Reports (Excel + HTML) sort ASCENDING
+  // by business date, then time, then created_at. The in-app LIST stays
+  // newest-first (query order record_date.desc) — ONLY the two report
+  // builders call this, on a COPY, so recShown/list never change.
+  function sortRowsAsc(rows) {
+    function tkey(r) {
+      var d = String(r.record_date || "");
+      var t = String(r.record_time || "");
+      var p = t ? t.split(":") : ["00", "00", "00"];
+      while (p.length < 3) p.push("00");
+      t = p.map(function (x) { return ("0" + (x || "00")).slice(-2); }).join(":");
+      return d + " " + t + " " + String(r.created_at || "");
+    }
+    return rows.slice().sort(function (a, b) {
+      var ka = tkey(a), kb = tkey(b);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+  }
   function buildReportXlsx(rows) {
     // v24: Boss ki apni template file (diesel-records (6).xlsx) ka EXACT
     // format — 10 columns, Saved By KHATAM, Temp/Density Litres/KG se
@@ -397,6 +416,7 @@
     // 8 density 0.000, 9 Diesel (12b, LTB), 10 header filler TB,
     // 11 header top LRT, 12 header bottom LRB, 13 Total label (12b +
     // DDEBF7, LTB), 14 total filler TB, 15 total filler RTB.
+    rows = sortRowsAsc(rows); // v25: oldest first (Boss order 19 Nov 21:36 PKT)
     var widths = [10.77734375, 11.33203125, 9.33203125, 11.77734375, 23.6640625, 17.88671875, 7.33203125, 8.88671875, 10.77734375, 10.109375];
     var cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
     var n = rows.length;
@@ -1777,33 +1797,58 @@
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
+  // v25 (2026-11-19): HTML report = Excel template ka MIRROR — title
+  // "Incoming Diesel" (gray125), 2-row header + Diesel group,
+  // Temp/Density Litres/KG se PEHLE, date d-mmm-yy, time h:mm AM/PM,
+  // Density 0.000, Litres/KG General (5000, not 5000.00), Total row
+  // DDEBF7, widths Excel ke proportional. Saved By KHATAM, subtitle
+  // khatam. Print button + @page landscape barkarar.
+  function fmtDateShort(iso) {
+    var p = String(iso || "").split("-");
+    if (p.length < 3) return "";
+    var m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][parseInt(p[1], 10) - 1];
+    if (!m) return "";
+    return parseInt(p[2], 10) + "-" + m + "-" + String(p[0]).slice(-2);
+  }
+  function fmtTime12(t) {
+    var p = String(t || "").split(":");
+    if (p.length < 2) return "";
+    var h = parseInt(p[0], 10), m = p[1].slice(0, 2);
+    if (isNaN(h) || isNaN(parseInt(m, 10))) return "";
+    var ap = h < 12 ? "AM" : "PM";
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ":" + m + " " + ap;
+  }
   function buildReportHTML(rows) {
+    rows = sortRowsAsc(rows); // v25: oldest first (Boss order 19 Nov 21:36 PKT)
     var tot = sumTotals(rows);
     var trs = rows.map(function (r) {
-      return "<tr><td class=\"dt\">" + escHtml(r.record_date || "") + "</td><td class=\"dt\">" + escHtml(r.record_time ? String(r.record_time).slice(0, 5) : "") + "</td><td>" + escHtml(r.vehicle_number || "") + "</td><td>" + escHtml(r.driver_name || "") + "</td><td>" + escHtml(r.company_name || "") + "</td><td>" + escHtml(r.receiver_name || "") + "</td><td class=\"num\">" + fmt2(parseFloat(r.diesel_litres) || 0) + "</td><td class=\"num\">" + fmt2(parseFloat(r.diesel_kg) || 0) + "</td><td>" + escHtml(displaySavedBy(r)) + "</td><td>" + (r.diesel_temperature == null ? "—" : fmtCsvNum(r.diesel_temperature) + "°C") + "</td><td>" + (r.diesel_density_g_per_l == null ? "—" : fmtCsvNum(r.diesel_density_g_per_l)) + "</td></tr>";
+      var dens = (r.diesel_density_g_per_l == null || isNaN(Number(r.diesel_density_g_per_l))) ? "" : Number(r.diesel_density_g_per_l).toFixed(3);
+      return "<tr><td>" + escHtml(fmtDateShort(r.record_date)) + "</td><td>" + escHtml(fmtTime12(r.record_time)) + "</td><td>" + escHtml(r.vehicle_number || "") + "</td><td>" + escHtml(r.driver_name || "") + "</td><td>" + escHtml(r.company_name || "") + "</td><td>" + escHtml(r.receiver_name || "") + "</td><td>" + (r.diesel_temperature == null ? "" : escHtml(fmtCsvNum(r.diesel_temperature)) + "°C") + "</td><td>" + escHtml(dens) + "</td><td>" + escHtml(fmtCsvNum(r.diesel_litres)) + "</td><td>" + escHtml(fmtCsvNum(r.diesel_kg)) + "</td></tr>";
     }).join("");
-    if (!trs) trs = "<tr><td colspan=\"11\" class=\"empty\">Koi record nahi mila.</td></tr>";
-    return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Diesel Record Report</title><style>"
-      + "body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;margin:0;background:#f1f5f0;color:#10231a}"
-      + ".head{background:#0b3d20;color:#fff;padding:28px 32px;border-bottom:5px solid #e9ba4e}"
-      + ".head h1{margin:0;font-size:26px;letter-spacing:.2px}.head p{margin:6px 0 0;opacity:.85;font-size:14px}"
-      + ""
-      + "table{width:100%;min-width:900px;border-collapse:collapse;background:#fff;table-layout:fixed}.table-wrap{overflow-x:auto;box-shadow:0 2px 12px rgba(16,35,26,.10);border-radius:12px}@media screen{thead th{position:sticky;top:0;z-index:1}tbody tr:hover td{background:#eef5ee}.print-bar button:hover{background:#14532d}}"
-      + "th{background:#0b3d20;color:#fff;text-align:left;padding:10px 12px;font-size:13px;letter-spacing:.3px}"
-      + "td{padding:10px 12px;border-bottom:1px solid #e2e8e4;font-size:14px;line-height:1.45;vertical-align:top;overflow-wrap:anywhere}tr{break-inside:avoid}tr:nth-child(even) td{background:#f7faf7}"
-      + "td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}"
-      + "td.dt{white-space:nowrap}"
-      + "tfoot td{background:#e9ba4e;color:#10231a;font-weight:800;padding:12px;border-top:2px solid #0b3d20;white-space:nowrap;font-size:13px}"
+    if (!trs) trs = "<tr><td colspan=\"10\" class=\"empty\">Koi record nahi mila.</td></tr>";
+    return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Incoming Diesel</title><style>"
+      + "body{font-family:Calibri,Arial,sans-serif;margin:0;background:#fff;color:#000}"
+      + "table{width:100%;min-width:900px;border-collapse:collapse;background:#fff;table-layout:fixed}"
+      + ".table-wrap{overflow-x:auto}"
+      + "td,th{border:1px solid #000;text-align:center;vertical-align:middle;font-size:12px;line-height:1.25;padding:3px 6px;overflow-wrap:anywhere}"
+      + "td.title-cell{font-size:16px;font-weight:700;background-color:#fff;background-image:radial-gradient(#7f7f7f .8px,transparent 1px);background-size:4px 4px;padding:5px 8px}"
+      + "thead th{font-weight:700;background:#fff}"
+      + "thead tr.hrow1 th{position:sticky;top:0;z-index:1}"
+      + "thead tr.hrow2 th{position:sticky;top:21px;z-index:1}"
+      + "tbody tr:hover td{background:#f2f7f2}"
+      + "tr{break-inside:avoid}"
+      + "tfoot td{background:#ddebf7;font-weight:700}"
       + ".empty{text-align:center;opacity:.7;padding:24px}"
-      + ""
-      + ".print-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 32px;background:#fff;border-bottom:1px solid #d8e2da}.print-bar button{background:#0b3d20;color:#fff;border:1px solid #0b3d20;border-radius:10px;padding:10px 18px;font-weight:700;cursor:pointer}.print-bar button:active{background:#14532d}.print-bar span{font-size:13px;opacity:.75}"
-      + "@media (max-width:600px){.head{padding:20px 16px}.head h1{font-size:22px}.print-bar{padding:12px 16px}th,td{padding:8px}}"
-      + "@media print{@page{size:landscape;margin:14mm}body{background:#fff}.print-bar{display:none!important}.head{padding:20px 24px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.table-wrap{overflow:visible}table{min-width:0}.table-wrap{box-shadow:none;border-radius:0}thead{display:table-header-group}tfoot{display:table-footer-group}th{-webkit-print-color-adjust:exact;print-color-adjust:exact}tfoot td{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:12px 8px}}"
-      + "</style></head><body><div class=\"head\"><h1>Diesel Record Report</h1><p>Diesel record history — filtered records ke sath totals</p></div>"
+      + ".print-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 32px;background:#fff;border-bottom:1px solid #d8e2da}.print-bar button{background:#0b3d20;color:#fff;border:1px solid #0b3d20;border-radius:10px;padding:10px 18px;font-weight:700;cursor:pointer}.print-bar button:active{background:#14532d}"
+      + "@media (max-width:600px){.print-bar{padding:12px 16px}td,th{padding:3px 4px}}"
+      + "@media print{@page{size:landscape;margin:14mm}body{background:#fff}.print-bar{display:none!important}.table-wrap{overflow:visible}table{min-width:0}thead{display:table-header-group}tfoot{display:table-footer-group}td.title-cell,th,tfoot td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}"
+      + "</style></head><body>"
       + "<div class=\"print-bar\"><button type=\"button\" onclick=\"window.print()\">Print Karein / PDF Save Karein</button></div>"
-      + "<div class=\"table-wrap\"><table><colgroup><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:10%\"><col style=\"width:10%\"><col style=\"width:12%\"><col style=\"width:10%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:9%\"><col style=\"width:7%\"><col style=\"width:8%\"></colgroup><thead><tr><th>Date</th><th>Time</th><th>Vehicle</th><th>Driver</th><th>Company</th><th>Receiver</th><th class=\"num\">Litres</th><th class=\"num\">KG</th><th>Saved By</th><th>Temp</th><th>Density</th></tr></thead>"
+      + "<div class=\"table-wrap\"><table><colgroup><col style=\"width:8.8%\"><col style=\"width:9.3%\"><col style=\"width:7.7%\"><col style=\"width:9.7%\"><col style=\"width:19.4%\"><col style=\"width:14.7%\"><col style=\"width:6%\"><col style=\"width:7.3%\"><col style=\"width:8.8%\"><col style=\"width:8.3%\"></colgroup>"
+      + "<thead><tr><td colspan=\"10\" class=\"title-cell\">Incoming Diesel</td></tr><tr class=\"hrow1\"><th rowspan=\"2\">Date</th><th rowspan=\"2\">Time</th><th rowspan=\"2\">Vehicle</th><th rowspan=\"2\">Driver</th><th rowspan=\"2\">Company</th><th rowspan=\"2\">Receiver</th><th colspan=\"4\">Diesel</th></tr><tr class=\"hrow2\"><th>Temp</th><th>Density</th><th>Litres</th><th>KG's</th></tr></thead>"
       + "<tbody>" + trs + "</tbody>"
-      + "<tfoot><tr><td colspan=\"7\">TOTAL (" + rows.length + " records)</td><td class=\"num\">" + fmt2(tot.litres) + " L</td><td class=\"num\">" + fmt2(tot.kg) + " KG</td><td></td><td></td></tr></tfoot></table></div>"
+      + "<tfoot><tr><td colspan=\"8\">Total</td><td>" + escHtml(fmtCsvNum(tot.litres)) + "</td><td>" + escHtml(fmtCsvNum(tot.kg)) + "</td></tr></tfoot></table></div>"
       + "</body></html>";
   }
   $("recReport").addEventListener("click", function () {
